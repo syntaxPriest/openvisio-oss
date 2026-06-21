@@ -6,16 +6,12 @@
 //
 // Requires @openvisio/core to be built first (root: `npm run build`).
 
-import { cpSync, rmSync } from 'node:fs'
+import { rmSync } from 'node:fs'
 import { build } from 'esbuild'
 
 // Clean: the bundle is the only artifact; stale per-file tsc output must not
 // ride along into the published tarball.
 rmSync('dist', { recursive: true, force: true })
-
-// Ship the static viewer UI (served by `openvisio view`) beside the bundle so it
-// resolves at dist/viewer relative to the compiled cli.js at runtime.
-cpSync('viewer', 'dist/viewer', { recursive: true })
 
 const common = {
   bundle: true,
@@ -23,7 +19,7 @@ const common = {
   format: 'esm',
   target: 'node18',
   sourcemap: false,
-  external: ['@modelcontextprotocol/sdk', 'zod', 'web-tree-sitter', 'tree-sitter-wasms', 'lmdb'],
+  external: ['@modelcontextprotocol/sdk', 'zod', 'web-tree-sitter', 'tree-sitter-wasms', 'lmdb', 'openvisio-viewer'],
   logLevel: 'info',
 }
 

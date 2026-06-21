@@ -1,11 +1,13 @@
 // `openvisio view [repo]` — the local, open-source graph viewer. Builds the
 // deterministic graph with the SAME engine the MCP serves, then hosts a tiny
-// localhost server that pairs the bundled static UI (viewer/) with the existing
-// spotlight HTTP surface: GET /api/graph?path=<repo> indexes on demand, and the
-// SSE stream is mounted too, so a running `openvisio mcp --spotlight` session on
-// the same port lights up the map live. Local-first: binds 127.0.0.1 only.
+// localhost server that pairs the bundled Atlas + City UI (the openvisio-viewer
+// package) with the existing spotlight HTTP surface: GET /api/graph?path=<repo>
+// indexes on demand, and the SSE stream is mounted too, so a running
+// `openvisio mcp --spotlight` session on the same port lights up the map live.
+// Local-first: binds 127.0.0.1 only.
 
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,16 +25,29 @@ export interface ViewerOptions {
 }
 
 /**
- * Locate the bundled viewer assets. When running from the published bundle this
- * is dist/viewer (copied beside cli.js by build.mjs); under `tsx src/cli.ts` it
- * is the source mcp/viewer dir one level up. Falls back to the dist guess.
+ * Locate the built `openvisio-viewer` assets (the Atlas + City React/Three app).
+ * Primary path: resolve the installed package via node's resolver — works both
+ * when openvisio depends on it (node_modules) and in the workspace. Falls back to
+ * a few relative guesses for source/dev layouts. Returns null if it isn't built.
  */
-function resolveViewerDir(): string {
+function resolveViewerDir(): string | null {
   const here = path.dirname(fileURLToPath(import.meta.url))
-  for (const cand of [path.join(here, 'viewer'), path.join(here, '..', 'viewer')]) {
+  const candidates: string[] = []
+  try {
+    const req = createRequire(import.meta.url)
+    candidates.push(path.join(path.dirname(req.resolve('openvisio-viewer/package.json')), 'dist'))
+  } catch {
+    // not resolvable (unbuilt workspace, or odd install) — fall through to guesses
+  }
+  candidates.push(
+    path.join(here, '..', '..', 'viewer', 'dist'), // mcp/dist → repo/viewer/dist
+    path.join(here, '..', '..', '..', 'viewer', 'dist'),
+    path.join(here, 'viewer'), // legacy bundled copy
+  )
+  for (const cand of candidates) {
     if (fs.existsSync(path.join(cand, 'index.html'))) return cand
   }
-  return path.join(here, 'viewer')
+  return null
 }
 
 /** Open `url` in the system default browser (best-effort, never throws). */
@@ -60,6 +75,15 @@ function isAddrInUse(err: unknown): boolean {
 export async function serveViewer(opts: ViewerOptions): Promise<void> {
   const root = path.resolve(opts.rootPath)
   const viewerDir = resolveViewerDir()
+  if (!viewerDir) {
+    process.stderr.write(
+      'openvisio view: viewer assets not found. The `openvisio-viewer` package is missing or unbuilt.\n' +
+        '  • installed globally: reinstall with `npm i -g openvisio@latest`\n' +
+        '  • from the repo: run `npm run build -w openvisio-viewer` first\n',
+    )
+    process.exitCode = 1
+    return
+  }
   // On-demand indexer: empty path (the UI's first load can omit it) falls back
   // to the repo the command was launched from.
   const onIndex = async (repoPath: string) => toExportPayload(await buildGraph(repoPath || root), Date.now())

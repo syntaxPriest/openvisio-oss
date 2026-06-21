@@ -89,7 +89,7 @@ export async function serveMcp(opts: ServeOptions): Promise<void> {
   const badRoot = resolvedRoot === path.parse(resolvedRoot).root || resolvedRoot === path.resolve(os.homedir())
 
   const server = new McpServer(
-    { name: 'openvisio', version: '0.1.3' },
+    { name: 'openvisio', version: '0.1.5' },
     {
       instructions:
         'MANDATORY workflow for this repository. Before reading, grepping, globbing, ' +

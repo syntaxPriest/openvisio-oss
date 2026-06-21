@@ -4,8 +4,12 @@ import type { GrammarConfig } from './index.js'
 const posix = path.posix
 
 const DART_SYMBOLS = `
-(class_definition (identifier) @name) @def.class
-(function_signature (identifier) @name) @def.function
+(class_definition name: (identifier) @name) @def.class
+(function_signature name: (identifier) @name) @def.function
+(getter_signature name: (identifier) @name) @def.function
+(setter_signature name: (identifier) @name) @def.function
+(enum_declaration name: (identifier) @name) @def.class
+(mixin_declaration (identifier) @name) @def.class
 `
 const DART_IMPORTS = `
 (library_import (import_specification (configurable_uri (uri (string_literal) @source))))

@@ -14,10 +14,11 @@
   },
   "workspaces": [
     "core",
-    "mcp"
+    "mcp",
+    "viewer"
   ],
   "scripts": {
-    "build": "npm run build -w @openvisio/core && npm run build -w openvisio",
+    "build": "npm run build -w @openvisio/core && npm run build -w openvisio-viewer && npm run build -w openvisio",
     "typecheck": "npm run typecheck -w @openvisio/core && npm run typecheck -w openvisio",
     "bench": "npm run build -w @openvisio/core && tsx bench/estimate.ts",
     "smoke": "npm run build && node mcp/smoke.mjs"

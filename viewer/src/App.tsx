@@ -4,21 +4,37 @@
 // `openvisio` server's /api/graph endpoint, with no account, narrator, or AI.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Building2, FolderSearch, Orbit, type LucideIcon } from 'lucide-react'
 import { AtlasView } from '@/components/graph/AtlasView'
 import { CityView } from '@/components/city/CityView'
+import { IndexingDialog } from '@/components/workspace/IndexingDialog'
+import { IndexingProgress } from '@/components/workspace/IndexingProgress'
 import { GraphResponseSchema, type GraphResponse } from '@/lib/api/types'
 import { cn } from '@/lib/utils'
 
 type Mode = 'city' | 'atlas'
 
+interface ModeDef {
+  id: Mode
+  label: string
+  icon: LucideIcon
+  hint: string
+}
+
+// Atlas first — it's the default landing view (the whole codebase at a glance).
+const MODES: ModeDef[] = [
+  { id: 'atlas', label: 'Atlas', icon: Orbit, hint: 'The whole codebase' },
+  { id: 'city', label: 'City', icon: Building2, hint: 'Your code as a city' },
+]
+
 export function App() {
   const [source, setSource] = useState<string>(() => new URLSearchParams(location.search).get('path') ?? '')
-  const [input, setInput] = useState<string>(source)
   const [graph, setGraph] = useState<GraphResponse | null>(null)
-  const [mode, setMode] = useState<Mode>('city')
+  const [mode, setMode] = useState<Mode>('atlas')
   const [focusedFileId, setFocusedFileId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [agent, setAgent] = useState<'off' | 'idle' | 'live'>('off')
   const [agentTool, setAgentTool] = useState<string>('')
 
@@ -35,6 +51,7 @@ export function App() {
       if (!res.ok) throw new Error(body?.error ?? 'index failed (' + res.status + ')')
       setGraph(GraphResponseSchema.parse(body.graph))
       setFocusedFileId(null)
+      setDialogOpen(false) // success — drop the dialog and reveal the map
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setGraph(null)
@@ -43,8 +60,21 @@ export function App() {
     }
   }, [])
 
-  // Index whatever ?path= we booted with (or the user re-indexes via the box).
+  // Index whatever ?path= we booted with (or the user re-indexes via the dialog).
   useEffect(() => { if (source) void indexRepo(source) }, [source, indexRepo])
+
+  // Open the index dialog by hand when there's no repo yet (first run, no ?path=).
+  useEffect(() => { if (!source) setDialogOpen(true) }, [source])
+
+  const startIndex = useCallback((repoPath: string) => {
+    const p = repoPath.trim()
+    if (!p) return
+    const url = new URL(location.href)
+    url.searchParams.set('path', p)
+    history.replaceState(null, '', url)
+    setSource(p)
+    if (p === source) void indexRepo(p) // same path → effect won't refire; re-run manually
+  }, [source, indexRepo])
 
   // Live agent spotlight — same server, same origin. A tool call's focus[0]
   // drives the focused file so the building/node lights up, exactly like the app.
@@ -76,33 +106,27 @@ export function App() {
     return () => es.close()
   }, [byPath])
 
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const p = input.trim()
-    if (!p) return
-    const url = new URL(location.href)
-    url.searchParams.set('path', p)
-    history.replaceState(null, '', url)
-    setSource(p)
-  }
-
   const repo = graph?.repo
   return (
     <div className={cn('flex h-screen flex-col bg-[var(--color-bg)] text-[var(--color-fg)]', mode === 'atlas' && 'atlas-dark')}>
       <header className="flex items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-2.5">
         <div className="font-mono text-sm font-semibold">OpenVisio<span className="text-[var(--color-muted)]"> · viewer</span></div>
-        <form onSubmit={onSubmit} className="flex min-w-0 flex-1 gap-2" style={{ maxWidth: 560 }}>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            spellCheck={false}
-            placeholder="/absolute/path/to/repo"
-            className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 font-mono text-xs outline-none focus:border-[var(--color-accent)]"
-          />
-          <button type="submit" disabled={loading} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-mono text-xs font-semibold text-white disabled:opacity-50">
-            {loading ? 'Indexing…' : 'Index'}
-          </button>
-        </form>
+
+        {/* Index button — opens the folder browser / path dialog. */}
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className="flex min-w-0 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 font-mono text-xs text-[var(--color-fg)] transition-colors hover:border-[var(--color-accent)]"
+          style={{ maxWidth: 420 }}
+        >
+          <FolderSearch size={14} strokeWidth={1.75} className="shrink-0 text-[var(--color-muted)]" />
+          {source ? (
+            <span className="min-w-0 flex-1 truncate text-left text-[var(--color-muted)]">{source}</span>
+          ) : (
+            <span className="text-[var(--color-muted)]">Index a repo…</span>
+          )}
+        </button>
+
         {repo && (
           <div className="hidden whitespace-nowrap font-mono text-xs text-[var(--color-muted)] sm:block">
             <b className="text-[var(--color-fg)]">{repo.file_count}</b> files · <b className="text-[var(--color-fg)]">{repo.total_loc.toLocaleString()}</b> loc
@@ -113,16 +137,30 @@ export function App() {
             {agent === 'live' ? '● ' + agentTool : '○ stream'}
           </span>
         )}
-        <div className="ml-auto flex overflow-hidden rounded-md border border-[var(--color-border)] font-mono text-xs">
-          {(['city', 'atlas'] as Mode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={cn('px-3 py-1.5 capitalize transition-colors', mode === m ? 'bg-[var(--color-accent)] text-white' : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]')}
-            >
-              {m}
-            </button>
-          ))}
+
+        {/* Icon mode toggle — Atlas / City. */}
+        <div className="ml-auto flex items-center gap-1 rounded-md border border-[var(--color-border)] p-0.5">
+          {MODES.map(({ id, label, icon: Icon, hint }) => {
+            const isActive = id === mode
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                aria-pressed={isActive}
+                title={`${label} — ${hint}`}
+                aria-label={`${label} — ${hint}`}
+                className={cn(
+                  'grid size-7 place-items-center rounded transition-colors',
+                  isActive
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]',
+                )}
+              >
+                <Icon size={16} strokeWidth={1.8} />
+              </button>
+            )
+          })}
         </div>
       </header>
 
@@ -134,13 +172,35 @@ export function App() {
             <AtlasView graph={graph} focusedFileId={focusedFileId} onFocus={setFocusedFileId} active />
           )
         ) : (
-          <div className="grid h-full place-items-center font-mono text-sm text-[var(--color-muted)]">
-            {error ? <span className="max-w-lg px-6 text-center text-red-400">Error: {error}</span>
-              : loading ? <span>Indexing {source}…</span>
-              : <span>Enter a local repo path above and press Index.</span>}
+          <div className="grid h-full place-items-center px-6">
+            {loading && !dialogOpen ? (
+              <div className="w-full max-w-[520px]">
+                <IndexingProgress target={source} onCancel={() => setLoading(false)} />
+              </div>
+            ) : error ? (
+              <div className="max-w-lg text-center font-mono text-sm text-red-400">Error: {error}</div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDialogOpen(true)}
+                className="flex items-center gap-2 rounded-md bg-[var(--color-accent)] px-4 py-2 font-mono text-xs font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                <FolderSearch size={15} strokeWidth={1.9} />
+                Index a repo
+              </button>
+            )}
           </div>
         )}
       </main>
+
+      <IndexingDialog
+        open={dialogOpen}
+        initialPath={source}
+        busy={loading}
+        error={error}
+        onStart={startIndex}
+        onCancel={() => { setDialogOpen(false); setLoading(false) }}
+      />
     </div>
   )
 }

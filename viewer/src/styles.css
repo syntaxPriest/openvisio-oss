@@ -94,9 +94,17 @@
   --color-o-cline: #242424;
   --color-o-cmut: #93938d;
 
-  --font-sans: "Google Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* The viewer is a plain Vite SPA (no next/font), so the actual families are
+     loaded via the Google Fonts <link> in index.html and named directly here —
+     matching the app's type system: Geist UI/display, JetBrains mono chrome,
+     Instrument Serif editorial. */
+  --font-jetbrains: "JetBrains Mono";
+  --font-geist: "Geist";
+  --font-instrument: "Instrument Serif";
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", monospace;
-  --font-display: var(--font-geist), "Geist", "Google Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-geist), "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-instrument), "Instrument Serif", Georgia, "Times New Roman", serif;
 }
 

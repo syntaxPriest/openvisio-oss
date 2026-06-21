@@ -35,6 +35,47 @@ interface AliasRule {
   targets: string[]
 }
 
+/**
+ * Parse a tsconfig/jsconfig body into alias rules. `dirRel` is the config's own
+ * directory, repo-relative ('' for the root) — it's prefixed onto `baseUrl` so
+ * the rule targets (e.g. `src/*`) resolve repo-relative even for a config that
+ * lives in a sub-package (e.g. `viewer/tsconfig.json` → baseUrl `viewer`). This
+ * is what makes `@/…` imports resolve across a monorepo with no root tsconfig.
+ */
+function parseTsAliases(raw: string, dirRel: string): TsAliases | null {
+  let config: any
+  try {
+    config = parseJsonc(raw)
+  } catch {
+    return null
+  }
+  const co = config?.compilerOptions ?? {}
+  const baseUrlRaw: string = typeof co.baseUrl === 'string' ? co.baseUrl : '.'
+  const baseRel = posix.normalize(baseUrlRaw).replace(/^\.\/?/, '').replace(/\/$/, '')
+  let baseUrl = posix.join(dirRel || '.', baseRel === '.' ? '' : baseRel)
+  if (baseUrl === '.') baseUrl = ''
+  const rules: AliasRule[] = []
+  const paths = co.paths
+  if (paths && typeof paths === 'object') {
+    for (const key of Object.keys(paths)) {
+      const star = key.indexOf('*')
+      const targets = (Array.isArray(paths[key]) ? paths[key] : []).filter(
+        (t: unknown): t is string => typeof t === 'string',
+      )
+      if (targets.length === 0) continue
+      if (star === -1) {
+        rules.push({ prefix: key, suffix: '\0exact', targets })
+      } else {
+        rules.push({ prefix: key.slice(0, star), suffix: key.slice(star + 1), targets })
+      }
+    }
+  }
+  const excludes = (Array.isArray(config?.exclude) ? config.exclude : []).filter(
+    (e: unknown): e is string => typeof e === 'string',
+  )
+  return { baseUrl, rules, excludes }
+}
+
 function loadTsAliases(absRoot: string): TsAliases {
   const empty: TsAliases = { baseUrl: '', rules: [], excludes: [] }
   for (const name of ['tsconfig.json', 'jsconfig.json']) {
@@ -44,35 +85,7 @@ function loadTsAliases(absRoot: string): TsAliases {
     } catch {
       continue
     }
-    let config: any
-    try {
-      config = parseJsonc(raw)
-    } catch {
-      return empty
-    }
-    const co = config?.compilerOptions ?? {}
-    const baseUrlRaw: string = typeof co.baseUrl === 'string' ? co.baseUrl : '.'
-    const baseUrl = posix.normalize(baseUrlRaw).replace(/^\.\/?/, '').replace(/\/$/, '')
-    const rules: AliasRule[] = []
-    const paths = co.paths
-    if (paths && typeof paths === 'object') {
-      for (const key of Object.keys(paths)) {
-        const star = key.indexOf('*')
-        const targets = (Array.isArray(paths[key]) ? paths[key] : []).filter(
-          (t: unknown): t is string => typeof t === 'string',
-        )
-        if (targets.length === 0) continue
-        if (star === -1) {
-          rules.push({ prefix: key, suffix: '\0exact', targets })
-        } else {
-          rules.push({ prefix: key.slice(0, star), suffix: key.slice(star + 1), targets })
-        }
-      }
-    }
-    const excludes = (Array.isArray(config?.exclude) ? config.exclude : []).filter(
-      (e: unknown): e is string => typeof e === 'string',
-    )
-    return { baseUrl: baseUrl === '.' ? '' : baseUrl, rules, excludes }
+    return parseTsAliases(raw, '') ?? empty
   }
   return empty
 }
@@ -225,10 +238,35 @@ export async function assembleGraph(
 
   console.error(`[build] resolving imports across ${files.length} files...`)
   const bySet = new Set(fileIdByPath.keys())
-  const aliases = ctx.aliases ?? loadTsAliases(absRoot)
+
+  // Per-package alias resolution. A monorepo can have many tsconfig/jsconfig
+  // files (one per sub-package, often with no root config at all), each mapping
+  // `@/*` to its own `src/*`. Discover them all from the scanned set and resolve
+  // every file's imports against its NEAREST enclosing config — otherwise all
+  // `@/…` imports go unresolved and the import graph collapses to relative-only.
+  const aliasEntries: { dir: string; aliases: TsAliases }[] = []
+  for (const sf of scanned) {
+    const base = posix.basename(sf.relPath)
+    if (base !== 'tsconfig.json' && base !== 'jsconfig.json') continue
+    const dirRaw = posix.dirname(sf.relPath)
+    const dir = dirRaw === '.' ? '' : dirRaw
+    const parsed = parseTsAliases(sf.content, dir)
+    if (parsed) aliasEntries.push({ dir, aliases: parsed })
+  }
+  // Longest dir first so the nearest config wins the prefix match.
+  aliasEntries.sort((a, b) => b.dir.length - a.dir.length)
+  const rootAliases = ctx.aliases ?? loadTsAliases(absRoot)
+  const aliasesFor = (relPath: string): TsAliases => {
+    for (const e of aliasEntries) {
+      if (e.dir === '' || relPath === e.dir || relPath.startsWith(e.dir + '/')) return e.aliases
+    }
+    return rootAliases
+  }
+
   const edgeWeights = new Map<string, number>()
   for (const file of files) {
     const raws = rawImportsByFile.get(file.id) ?? []
+    const aliases = aliasesFor(file.path)
     for (const raw of raws) {
       const targetPath = resolveImport(file, raw.specifier, bySet, aliases)
       if (targetPath == null) continue
@@ -357,6 +395,22 @@ export interface IndexChanges {
   changed: string[]
 }
 
+// Persistent-cache schema version. The LMDB cache stores parse results (keyed by
+// content SHA) and file IDs (keyed by path). Those are only valid for the engine
+// that wrote them — when the parser's output shape changes (new symbol fields,
+// import/call extraction, id allocation), a same-SHA entry from an OLDER engine
+// would be served verbatim, silently dropping imports/edges or aliasing symbols
+// to the wrong file. BUMP THIS whenever parse output or id allocation changes;
+// the Indexer wipes a cache whose stored version doesn't match.
+export const CACHE_VERSION = 2
+const CACHE_VERSION_KEY = 'meta:cacheVersion'
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
 function encodeU32(n: number): Uint8Array {
   const buf = new Uint8Array(4)
   const dv = new DataView(buf.buffer)
@@ -390,8 +444,25 @@ export class Indexer {
     if (this.dbPath && !this.store) {
       const { LmdbStore } = await import('./stores/lmdb.js')
       this.store = new LmdbStore(this.dbPath)
+      this.ensureCacheVersion(this.store)
     }
     return (await this.run()).graph
+  }
+
+  /**
+   * Wipe the cache if it was written by a different engine version. A same-SHA
+   * parse result (or persisted file id) from an older engine is NOT safe to
+   * reuse — it can drop import/call edges or alias symbols to the wrong file —
+   * so on a version mismatch we clear everything and start the cache fresh.
+   */
+  private ensureCacheVersion(store: Store): void {
+    const want = new TextEncoder().encode(String(CACHE_VERSION))
+    const have = store.get(CACHE_VERSION_KEY)
+    if (!have || !bytesEqual(have, want)) {
+      store.clear()
+      store.set(CACHE_VERSION_KEY, want)
+      store.sync()
+    }
   }
 
   async reindex(): Promise<{ graph: CodeGraph; changes: IndexChanges }> {
@@ -414,8 +485,25 @@ export class Indexer {
     if (this.store && this.idByPath.size === 0) {
       for (const sf of scanned) {
         const idBuf = this.store.get(`id:${sf.relPath}`)
-        if (idBuf) this.idByPath.set(sf.relPath, decodeU32(idBuf))
+        // Only a well-formed 4-byte id is trustworthy; a truncated/corrupt
+        // value from a legacy cache must never reach decodeU32 (it throws) or
+        // seed a bogus id.
+        if (idBuf && idBuf.length === 4) this.idByPath.set(sf.relPath, decodeU32(idBuf))
       }
+      // Defensive: a corrupt/legacy store can hand back the SAME id for two
+      // distinct paths, which would alias one file's symbols onto another file
+      // (e.g. a function anchored to a tsconfig). If the restored ids aren't
+      // unique, discard them all and reallocate fresh in scan order.
+      const seen = new Set<number>()
+      let collision = false
+      for (const id of this.idByPath.values()) {
+        if (seen.has(id)) {
+          collision = true
+          break
+        }
+        seen.add(id)
+      }
+      if (collision) this.idByPath.clear()
     }
 
     const changes: IndexChanges = { added: [], removed: [], changed: [] }

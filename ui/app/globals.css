@@ -1,0 +1,397 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-ink-0: #ffffff;
+  --color-ink-1: #fafafa;
+  --color-ink-2: #f5f5f5;
+  --color-ink-3: #ebebeb;
+  --color-ink-4: #d4d4d4;
+  --color-ink-5: #a3a3a3;
+  --color-ink-6: #6b6b6b;
+  --color-ink-7: #2a2a2a;
+  --color-ink-8: #0a0a0a;
+
+  /* Aliases — old token names map to ink-N so component code stays put. */
+  --color-bg: #fafafa;
+  --color-bg-elev: #ffffff;
+  --color-fg: #0a0a0a;
+  --color-muted: #6b6b6b;
+  --color-border: #ebebeb;
+  --color-accent: #0a0a0a;
+
+  /* Language palette — still semantic (color carries signal per §9). */
+  --color-lang-typescript: #3178C6;
+  --color-lang-javascript: #F7DF1E;
+  --color-lang-python: #3776AB;
+  --color-lang-go: #00ADD8;
+  --color-lang-rust: #CE422B;
+  --color-lang-java: #E76F00;
+  --color-lang-ruby: #CC342D;
+  --color-lang-c: #6E7781;
+  --color-lang-cpp: #F34B7D;
+  --color-lang-csharp: #178600;
+  --color-lang-php: #4F5D95;
+  --color-lang-twig: #9BB52C;
+  --color-lang-blade: #F7523F;
+  --color-lang-kotlin: #A97BFF;
+  --color-lang-swift: #F05138;
+  --color-lang-scala: #C22D40;
+  --color-lang-lua: #5B7FE0;
+  --color-lang-bash: #4EAA25;
+  --color-lang-html: #E34C26;
+  --color-lang-css: #663399;
+  --color-lang-scss: #C6538C;
+  --color-lang-vue: #41B883;
+  --color-lang-svelte: #FF3E00;
+  --color-lang-dart: #00B4AB;
+  --color-lang-elixir: #6E4A7E;
+  --color-lang-ocaml: #EF7A08;
+  --color-lang-solidity: #AA6746;
+  --color-lang-zig: #EC915C;
+  --color-lang-r: #276DC3;
+  --color-lang-elm: #60B5CC;
+  --color-lang-rescript: #E6484F;
+  --color-lang-tlaplus: #4E4E4E;
+  --color-lang-objc: #438EFF;
+  --color-lang-embedded_template: #B0AC9F;
+  --color-lang-systemrdl: #8A8A8A;
+  --color-lang-ql: #FF6600;
+  --color-lang-elisp: #7F5AB6;
+  --color-lang-markdown: #6B7280;
+  --color-lang-json: #9CA3AF;
+  --color-lang-yaml: #CB171E;
+  --color-lang-toml: #9C4221;
+  --color-lang-sql: #E38C00;
+  --color-lang-graphql: #E10098;
+  --color-lang-eda: #B87333; /* copper — PCB traces (KiCad/EAGLE/Gerber) */
+  --color-lang-other: #9CA3AF;
+
+  /* Hotspot encoding — still semantic. */
+  --color-hot-1: #FBBF24;
+  --color-hot-2: #F59E0B;
+  --color-hot-3: #EF4444;
+
+  /* Landing palette — warm paper neutrals + a single blue family. */
+  --color-lp-beige: #f1f0eb;
+  --color-lp-duck: #f1f5f8;
+  --color-lp-sky: #d3e7ff;
+  --color-lp-blue: #628ad1;
+  --color-lp-steel: #3d5e86;
+  --color-lp-navy: #29313f;
+  --color-lp-ink: #1b1b1b;
+  --color-lp-grey: #7d7d7d;
+  --color-lp-line: #e3e1da;
+
+  /* "Paper & coal" palette — editorial light + engineering dark + forest accent. */
+  --color-o-paper: #f6f5f1;
+  --color-o-ink: #161616;
+  --color-o-mut: #6e6e68;
+  --color-o-line: #e7e5df;
+  --color-o-forest: #213529;
+  --color-o-leaf: #44694f;
+  --color-o-coal: #0a0a0a;
+  --color-o-coal2: #141414;
+  --color-o-cline: #242424;
+  --color-o-cmut: #93938d;
+
+  --font-sans: "Google Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", monospace;
+  --font-display: var(--font-geist), "Geist", "Google Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument), "Instrument Serif", Georgia, "Times New Roman", serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-ink-0);
+  color: var(--color-ink-8);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Dark theme tokens. Applied two ways:
+   • html.theme-dark  — the app-wide dark mode (toggled in the top bar, persisted).
+   • .atlas-dark      — the atlas always darkens its chrome, even in light mode.
+   Only the neutral chrome tokens flip; language + hotspot hues stay true. */
+.theme-dark,
+.atlas-dark {
+  --color-ink-0: #07080c;
+  --color-ink-1: #0d0f15;
+  --color-ink-2: #14161e;
+  --color-ink-3: #1c1f29;
+  --color-ink-4: #2a2e3b;
+  --color-ink-5: #6b7280;
+  --color-ink-6: #9aa3b2;
+  --color-ink-7: #c8cfdb;
+  --color-ink-8: #f2f5fa;
+
+  --color-bg: #07080c;
+  --color-bg-elev: #0e1016;
+  --color-fg: #f2f5fa;
+  --color-muted: #8b93a3;
+  --color-border: #1c1f29;
+  /* The brand amber, not light — so the many `bg-accent text-white` buttons stay
+     readable AND `text-accent` emphasis still pops against the dark. */
+  --color-accent: #d2722e;
+}
+
+/* Tight uppercase mono section label — used throughout the chrome. */
+.label-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-ink-5);
+}
+
+/* React Flow overrides — keep the canvas calm under chrome, sketchy on map. */
+.react-flow__attribution { display: none; }
+
+.react-flow__edge-path {
+  stroke: var(--color-ink-4);
+}
+
+.react-flow__node {
+  font-family: var(--font-sans);
+}
+
+@keyframes canvasFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Gentle float for the 3D glass renders on the landing. */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-14px) rotate(-2deg); }
+}
+.float-3d { animation: floaty 7s ease-in-out infinite; will-change: transform; }
+.float-3d-slow { animation: floaty 11s ease-in-out infinite; will-change: transform; }
+@media (prefers-reduced-motion: reduce) {
+  .float-3d, .float-3d-slow { animation: none; }
+}
+
+/* Ultra-light editorial display type for the landing (Geist 250, lh 1.0). */
+.lp-display {
+  font-family: var(--font-display);
+  font-weight: 250;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+/* Editorial serif display — the Ona-style headline voice. */
+.o-serif {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+}
+
+/* Hero display — bold grotesk, tight and large, for the 3D-glass hero. */
+.o-hero {
+  font-family: var(--font-space), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 500;
+  line-height: 1.0;
+  letter-spacing: -0.045em;
+}
+
+/* Endless capability ticker — content is duplicated once, so -50% loops. */
+@keyframes lp-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.lp-marquee { animation: lp-marquee 32s linear infinite; will-change: transform; }
+@media (prefers-reduced-motion: reduce) {
+  .lp-marquee { animation: none; }
+}
+
+/* Terminal caret. */
+@keyframes lp-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+.lp-caret {
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: lp-blink 1.05s steps(1) infinite;
+}
+
+/* One-shot fade-up for content swapped in place (tab captions, tokens). */
+@keyframes lp-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.lp-fade-up { animation: lp-fade-up 0.5s cubic-bezier(0.165, 0.84, 0.44, 1) both; }
+
+/* Hero scroll cue — a light dot running down a hairline. */
+@keyframes lp-cue {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(300%); }
+}
+.lp-cue { animation: lp-cue 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-caret, .lp-fade-up, .lp-cue { animation: none; }
+  .lp-fade-up { opacity: 1; transform: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   The Narrator — an editorial walkthrough. Warm reading serif, big and airy;
+   words drift in as the narrator speaks; "Listen" lights the spoken word like
+   lyrics. Subtle, sweet, conversational — not a chat log.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Warm paper wash behind the reading column. */
+.narr-paper {
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(211, 231, 255, 0.16) 0%, transparent 60%),
+    linear-gradient(180deg, #fcfbf9 0%, #faf8f4 100%);
+}
+
+/* The narrator's voice: a reading serif, large and unhurried. */
+.narr-prose {
+  font-family: var(--font-reader), Newsreader, Georgia, "Times New Roman", serif;
+  font-size: clamp(19px, 1.35vw, 22px);
+  line-height: 1.78;
+  letter-spacing: 0.002em;
+  color: #2b2b28;
+}
+.narr-prose p { margin: 0 0 1.15em; }
+.narr-prose p:last-child { margin-bottom: 0; }
+
+/* Inline code / paths inside the prose — quiet, not boxed-in. */
+.narr-code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  letter-spacing: 0;
+  color: #3d5e86;
+  background: rgba(61, 94, 134, 0.06);
+  padding: 0.05em 0.34em;
+  border-radius: 5px;
+  /* Never let a long token blow out the reading column — wrap as a last resort.
+     (Paths are already shortened to their filename in Message.tsx.) */
+  overflow-wrap: anywhere;
+  cursor: default;
+}
+
+/* Each word drifts up once, as it arrives in the stream. Stable React keys
+   mean only newly-appended words animate — the narrator "speaks" onto the page. */
+@keyframes narr-word-in {
+  from { opacity: 0; transform: translateY(0.18em); filter: blur(2px); }
+  to   { opacity: 1; transform: none; filter: blur(0); }
+}
+.narr-word {
+  display: inline;
+  animation: narr-word-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  transition: color 0.18s ease, opacity 0.25s ease;
+}
+
+/* Karaoke states (only applied while Listen is active). */
+.narr-read    { color: #2b2b28; }                 /* already spoken */
+.narr-current {                                    /* the word being spoken */
+  color: #b4480d;
+  background: linear-gradient(180deg, transparent 62%, rgba(217, 119, 6, 0.16) 0);
+  border-radius: 3px;
+}
+.narr-ahead   { color: rgba(43, 43, 40, 0.32); }   /* not yet reached */
+
+/* Soft fades top & bottom of the scroll column, so text dissolves at the edges. */
+.narr-fade-top {
+  background: linear-gradient(180deg, var(--narr-bg, #faf8f4) 0%, transparent 100%);
+}
+.narr-fade-bottom {
+  background: linear-gradient(0deg, var(--narr-bg, #faf8f4) 0%, transparent 100%);
+}
+
+/* Gentle pulse on the Listen pill while it's reading aloud. */
+@keyframes narr-listen { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.narr-listening { animation: narr-listen 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .narr-word { animation: none; opacity: 1; transform: none; filter: none; }
+  .narr-listening { animation: none; }
+}
+
+/* Narrator in dark mode — the paper becomes a dim study, the ink turns to light.
+   The accent (warm amber) reads well on dark, so the karaoke "current word"
+   stays as-is. */
+.theme-dark .narr-paper {
+  --narr-bg: #0b0d12;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(120, 160, 220, 0.10) 0%, transparent 60%),
+    linear-gradient(180deg, #0c0e14 0%, #090a0f 100%);
+}
+.theme-dark .narr-prose { color: #cdd3de; }
+.theme-dark .narr-code {
+  color: #9fc1ff;
+  background: rgba(120, 160, 220, 0.12);
+}
+.theme-dark .narr-read { color: #cdd3de; }
+.theme-dark .narr-ahead { color: rgba(205, 211, 222, 0.32); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Modals — a soft, blurred backdrop and a gently-rising card. Pair `.modal-
+   backdrop` on the overlay with `.modal-card` on the dialog.
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.modal-backdrop {
+  background: rgba(24, 23, 22, 0.22);
+  -webkit-backdrop-filter: blur(10px) saturate(1.05);
+  backdrop-filter: blur(10px) saturate(1.05);
+  animation: modal-backdrop-in 0.22s ease both;
+}
+.modal-card {
+  animation: modal-card-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop, .modal-card { animation: none; }
+  .modal-card { opacity: 1; transform: none; }
+}
+
+/* ── Syntax highlighting (rehype-highlight / highlight.js tokens) ──────────────
+   Mid-tone palette readable on both the light "paper" and dark code cards. The
+   code card background + scroll come from the <pre> utility classes; these only
+   colour tokens. */
+.answer-md .hljs { color: var(--color-ink-8); background: transparent; }
+.answer-md .hljs-comment, .answer-md .hljs-quote { color: var(--color-ink-5); font-style: italic; }
+.answer-md .hljs-keyword, .answer-md .hljs-selector-tag, .answer-md .hljs-built_in,
+.answer-md .hljs-name, .answer-md .hljs-tag, .answer-md .hljs-meta-keyword { color: #8959a8; }
+.answer-md .hljs-string, .answer-md .hljs-attr, .answer-md .hljs-template-tag,
+.answer-md .hljs-template-variable, .answer-md .hljs-addition, .answer-md .hljs-regexp { color: #4a8a2f; }
+.answer-md .hljs-number, .answer-md .hljs-literal, .answer-md .hljs-type,
+.answer-md .hljs-params, .answer-md .hljs-meta, .answer-md .hljs-link { color: #d2722e; }
+.answer-md .hljs-title, .answer-md .hljs-title.class_, .answer-md .hljs-title.function_,
+.answer-md .hljs-section { color: #3a6db5; }
+.answer-md .hljs-attribute, .answer-md .hljs-variable, .answer-md .hljs-symbol,
+.answer-md .hljs-bullet, .answer-md .hljs-selector-id, .answer-md .hljs-selector-class,
+.answer-md .hljs-deletion { color: #c0392b; }
+.answer-md .hljs-emphasis { font-style: italic; }
+.answer-md .hljs-strong { font-weight: 600; }
+
+/* Answer prose (narrator + ask) — the warm reading-serif voice; code stays mono.
+   Font size is set by each caller's wrapper so the narrator can read larger than
+   the ask modal. */
+.answer-md {
+  font-family: var(--font-reader), Newsreader, Georgia, "Times New Roman", serif;
+  line-height: 1.75;
+  color: var(--color-ink-7);
+}
+.answer-md code,
+.answer-md pre,
+.answer-md .hljs {
+  font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenVisio — local graph viewer</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header id="topbar">
+      <div class="brand">OpenVisio<span class="dim"> · local viewer</span></div>
+      <form id="index-form" class="path-box">
+        <input id="path-input" type="text" spellcheck="false" placeholder="/absolute/path/to/repo" />
+        <button id="index-btn" type="submit">Index</button>
+      </form>
+      <div class="stats" id="stats"></div>
+      <span class="agent off" id="agent-status" hidden></span>
+    </header>
+
+    <main id="stage">
+      <aside id="sidebar">
+        <div class="panel">
+          <div class="panel-title" id="repo-name">No repo loaded</div>
+          <input id="search" type="search" placeholder="Filter files…" spellcheck="false" />
+          <label class="toggle"><input type="checkbox" id="edges-toggle" checked /> Show import edges</label>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Languages</div>
+          <ul id="legend" class="legend"></ul>
+        </div>
+        <div class="panel" id="details-panel" hidden>
+          <div class="panel-title">Selection</div>
+          <div id="details"></div>
+        </div>
+      </aside>
+
+      <div id="canvas-wrap">
+        <canvas id="graph"></canvas>
+        <div id="tooltip" hidden></div>
+        <div id="overlay" class="overlay">Loading…</div>
+        <div id="hint" class="hint">drag to pan · scroll to zoom · click a node</div>
+      </div>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

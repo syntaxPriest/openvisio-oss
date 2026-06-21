@@ -1,0 +1,28 @@
+{
+  "name": "openvisio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenVisio monorepo. The deterministic code-graph core, the standalone MCP CLI published to npm as `openvisio`, and a local-first viewer (Atlas + City). See any codebase as a graph; give coding agents a token-cheap, graph-native query surface.",
+  "license": "MIT",
+  "homepage": "https://github.com/syntaxpriest/openvisio-oss#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syntaxpriest/openvisio-oss.git"
+  },
+  "bugs": {
+    "url": "https://github.com/syntaxpriest/openvisio-oss/issues"
+  },
+  "workspaces": [
+    "core",
+    "mcp"
+  ],
+  "scripts": {
+    "build": "npm run build -w @openvisio/core && npm run build -w openvisio",
+    "typecheck": "npm run typecheck -w @openvisio/core && npm run typecheck -w openvisio",
+    "bench": "npm run build -w @openvisio/core && tsx bench/estimate.ts",
+    "smoke": "npm run build && node mcp/smoke.mjs"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

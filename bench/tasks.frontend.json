@@ -1,0 +1,34 @@
+[
+  {
+    "id": "voice-narration",
+    "description": "add voice narration with a voice picker to the graph view and read answers aloud via text to speech"
+  },
+  {
+    "id": "city-view-highlight",
+    "description": "highlight a building in the 3D city view when a file is focused and pulse its emissive color"
+  },
+  {
+    "id": "graph-edges-focus",
+    "description": "emphasize the import edges connected to the focused node in the graph view and dim the rest"
+  },
+  {
+    "id": "mcp-client",
+    "description": "register the indexed repo with the MCP client and call tools over the websocket connection"
+  },
+  {
+    "id": "indexing-progress",
+    "description": "stream live indexing progress through the stages walk parse resolve graph and show it in the dialog"
+  },
+  {
+    "id": "session-relay",
+    "description": "pair the browser with the editor over the session relay and route open file and selection messages"
+  },
+  {
+    "id": "citations",
+    "description": "render clickable citations in the narrator chat that focus the cited node in the graph"
+  },
+  {
+    "id": "hotspot-filter",
+    "description": "filter the graph by recently changed files and encode commit hotspot intensity on node borders"
+  }
+]

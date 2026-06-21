@@ -22,74 +22,88 @@ function signatureOf(def: Node): string {
   return sig.length > 200 ? sig.slice(0, 197) + '…' : sig
 }
 
-/** Parse one file into its public-surface symbols and raw import specifiers. */
-export async function parseFile(relPath: string, content: string): Promise<ParseResult> {
+/** Parse one file into its public-surface symbols and raw import specifiers.
+ *  `parseTimeoutMs` limits how long tree-sitter may spend on a single file
+ *  (default no limit); on timeout the file silently yields an empty result. */
+export async function parseFile(relPath: string, content: string, parseTimeoutMs?: number): Promise<ParseResult> {
   const grammar = grammarForFile(relPath)
   if (!grammar) return { symbols: [], imports: [], calls: [] }
   const config: GrammarConfig | undefined = GRAMMARS[grammar]
   if (!config) return { symbols: [], imports: [], calls: [] }
   let root
   try {
-    root = await parseSource(grammar, content)
+    root = await parseSource(grammar, content, parseTimeoutMs)
   } catch {
     return { symbols: [], imports: [], calls: [] }
   }
   const queries = getOrCompileQueries(grammar, config)
 
-  const symbols: ParseResult['symbols'] = []
-  const seen = new Set<string>()
-  for (const match of queries.symbolQuery.matches(root)) {
-    let nameNode: Node | undefined
-    let defNode: Node | undefined
-    let captureName = ''
-    for (const cap of match.captures) {
-      if (cap.name === 'name') nameNode = cap.node
-      else if (cap.name.startsWith('def.')) {
-        defNode = cap.node
-        captureName = cap.name
-      }
-    }
-    if (!nameNode || !defNode) continue
-    const name = nameNode.text
-    if (!config.keep(defNode, name)) continue
-    const key = `${name}:${defNode.startPosition.row}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    symbols.push({
-      name,
-      kind: kindFromCapture(captureName),
-      signature: signatureOf(defNode),
-      startLine: defNode.startPosition.row + 1,
-      endLine: defNode.endPosition.row + 1,
-      exported: config.exported(defNode, name),
-    })
-  }
-  symbols.sort((a, b) => a.startLine - b.startLine)
-
-  const imports: ParseResult['imports'] = []
-  if (queries.importQuery) {
-    const specSeen = new Set<string>()
-    for (const match of queries.importQuery.matches(root)) {
+  let symbols: ParseResult['symbols'] = []
+  try {
+    const extracted: ParseResult['symbols'] = []
+    const seen = new Set<string>()
+    for (const match of queries.symbolQuery.matches(root)) {
+      let nameNode: Node | undefined
+      let defNode: Node | undefined
+      let captureName = ''
       for (const cap of match.captures) {
-        const spec = config.importSpecifier(cap.node).trim()
-        if (spec.length > 0 && !specSeen.has(spec)) {
-          specSeen.add(spec)
-          imports.push({ specifier: spec })
+        if (cap.name === 'name') nameNode = cap.node
+        else if (cap.name.startsWith('def.')) {
+          defNode = cap.node
+          captureName = cap.name
         }
       }
+      if (!nameNode || !defNode) continue
+      const name = nameNode.text
+      if (!config.keep(defNode, name)) continue
+      const key = `${name}:${defNode.startPosition.row}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      extracted.push({
+        name,
+        kind: kindFromCapture(captureName),
+        signature: signatureOf(defNode),
+        startLine: defNode.startPosition.row + 1,
+        endLine: defNode.endPosition.row + 1,
+        exported: config.exported(defNode, name),
+      })
     }
-  }
+    extracted.sort((a, b) => a.startLine - b.startLine)
+    symbols = extracted
+  } catch (e) { console.error(`[parse] symbol query failed for ${relPath}: ${e}`) }
 
-  const calls: ParseResult['calls'] = []
-  if (queries.callQuery) {
-    for (const match of queries.callQuery.matches(root)) {
-      for (const cap of match.captures) {
-        if (cap.name !== 'callee') continue
-        const callee = cap.node.text
-        if (callee.length > 0) calls.push({ callee, line: cap.node.startPosition.row + 1 })
+  let imports: ParseResult['imports'] = []
+  try {
+    if (queries.importQuery) {
+      const extracted: ParseResult['imports'] = []
+      const specSeen = new Set<string>()
+      for (const match of queries.importQuery.matches(root)) {
+        for (const cap of match.captures) {
+          const spec = config.importSpecifier(cap.node).trim()
+          if (spec.length > 0 && !specSeen.has(spec)) {
+            specSeen.add(spec)
+            extracted.push({ specifier: spec })
+          }
+        }
       }
+      imports = extracted
     }
-  }
+  } catch (e) { console.error(`[parse] import query failed for ${relPath}: ${e}`) }
+
+  let calls: ParseResult['calls'] = []
+  try {
+    if (queries.callQuery) {
+      const extracted: ParseResult['calls'] = []
+      for (const match of queries.callQuery.matches(root)) {
+        for (const cap of match.captures) {
+          if (cap.name !== 'callee') continue
+          const callee = cap.node.text
+          if (callee.length > 0) extracted.push({ callee, line: cap.node.startPosition.row + 1 })
+        }
+      }
+      calls = extracted
+    }
+  } catch (e) { console.error(`[parse] call query failed for ${relPath}: ${e}`) }
 
   return { symbols, imports, calls }
 }

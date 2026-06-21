@@ -148,15 +148,32 @@ export async function loadGrammars(ids: GrammarId[]): Promise<void> {
   }
 }
 
-/** Parse source with a pre-loaded grammar; returns the syntax tree root node. */
-export async function parseSource(id: GrammarId, source: string) {
+/** Parse source with a pre-loaded grammar; returns the syntax tree root node.
+ *  When `timeoutMs` is > 0, the synchronous parse is wrapped in a promise race so a
+ *  pathological file (e.g. a giant generated one) doesn't hang the whole batch. */
+export async function parseSource(id: GrammarId, source: string, timeoutMs?: number) {
   const lang = grammarCache.get(id)
   if (!lang) throw new Error(`Grammar ${id} not loaded — call loadGrammars() first`)
   const parser = new Parser()
   parser.setLanguage(lang)
-  const tree = parser.parse(source)
-  if (!tree) throw new Error(`tree-sitter failed to parse with grammar ${id}`)
-  return tree.rootNode
+
+  const doParse = () => {
+    const tree = parser.parse(source)
+    if (!tree) throw new Error(`tree-sitter failed to parse with grammar ${id}`)
+    return tree.rootNode
+  }
+
+  if (timeoutMs && timeoutMs > 0) {
+    return Promise.race([
+      Promise.resolve().then(doParse),
+      new Promise<never>((_, reject) => setTimeout(() => {
+        console.error(`[treesitter] parse timeout after ${timeoutMs}ms for ${id}`)
+        reject(new Error(`parse timeout after ${timeoutMs}ms for ${id}`))
+      }, timeoutMs)),
+    ])
+  }
+
+  return doParse()
 }
 
 /** Compile a tree-sitter query against a pre-loaded grammar. */

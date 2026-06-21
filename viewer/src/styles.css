@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-0: #ffffff;
+  --color-ink-1: #fafafa;
+  --color-ink-2: #f5f5f5;
+  --color-ink-3: #ebebeb;
+  --color-ink-4: #d4d4d4;
+  --color-ink-5: #a3a3a3;
+  --color-ink-6: #6b6b6b;
+  --color-ink-7: #2a2a2a;
+  --color-ink-8: #0a0a0a;
+
+  /* Aliases — old token names map to ink-N so component code stays put. */
+  --color-bg: #fafafa;
+  --color-bg-elev: #ffffff;
+  --color-fg: #0a0a0a;
+  --color-muted: #6b6b6b;
+  --color-border: #ebebeb;
+  --color-accent: #0a0a0a;
+
+  /* Language palette — still semantic (color carries signal per §9). */
+  --color-lang-typescript: #3178C6;
+  --color-lang-javascript: #F7DF1E;
+  --color-lang-python: #3776AB;
+  --color-lang-go: #00ADD8;
+  --color-lang-rust: #CE422B;
+  --color-lang-java: #E76F00;
+  --color-lang-ruby: #CC342D;
+  --color-lang-c: #6E7781;
+  --color-lang-cpp: #F34B7D;
+  --color-lang-csharp: #178600;
+  --color-lang-php: #4F5D95;
+  --color-lang-twig: #9BB52C;
+  --color-lang-blade: #F7523F;
+  --color-lang-kotlin: #A97BFF;
+  --color-lang-swift: #F05138;
+  --color-lang-scala: #C22D40;
+  --color-lang-lua: #5B7FE0;
+  --color-lang-bash: #4EAA25;
+  --color-lang-html: #E34C26;
+  --color-lang-css: #663399;
+  --color-lang-scss: #C6538C;
+  --color-lang-vue: #41B883;
+  --color-lang-svelte: #FF3E00;
+  --color-lang-dart: #00B4AB;
+  --color-lang-elixir: #6E4A7E;
+  --color-lang-ocaml: #EF7A08;
+  --color-lang-solidity: #AA6746;
+  --color-lang-zig: #EC915C;
+  --color-lang-r: #276DC3;
+  --color-lang-elm: #60B5CC;
+  --color-lang-rescript: #E6484F;
+  --color-lang-tlaplus: #4E4E4E;
+  --color-lang-objc: #438EFF;
+  --color-lang-embedded_template: #B0AC9F;
+  --color-lang-systemrdl: #8A8A8A;
+  --color-lang-ql: #FF6600;
+  --color-lang-elisp: #7F5AB6;
+  --color-lang-markdown: #6B7280;
+  --color-lang-json: #9CA3AF;
+  --color-lang-yaml: #CB171E;
+  --color-lang-toml: #9C4221;
+  --color-lang-sql: #E38C00;
+  --color-lang-graphql: #E10098;
+  --color-lang-eda: #B87333; /* copper — PCB traces (KiCad/EAGLE/Gerber) */
+  --color-lang-other: #9CA3AF;
+
+  /* Hotspot encoding — still semantic. */
+  --color-hot-1: #FBBF24;
+  --color-hot-2: #F59E0B;
+  --color-hot-3: #EF4444;
+
+  /* Landing palette — warm paper neutrals + a single blue family. */
+  --color-lp-beige: #f1f0eb;
+  --color-lp-duck: #f1f5f8;
+  --color-lp-sky: #d3e7ff;
+  --color-lp-blue: #628ad1;
+  --color-lp-steel: #3d5e86;
+  --color-lp-navy: #29313f;
+  --color-lp-ink: #1b1b1b;
+  --color-lp-grey: #7d7d7d;
+  --color-lp-line: #e3e1da;
+
+  /* "Paper & coal" palette — editorial light + engineering dark + forest accent. */
+  --color-o-paper: #f6f5f1;
+  --color-o-ink: #161616;
+  --color-o-mut: #6e6e68;
+  --color-o-line: #e7e5df;
+  --color-o-forest: #213529;
+  --color-o-leaf: #44694f;
+  --color-o-coal: #0a0a0a;
+  --color-o-coal2: #141414;
+  --color-o-cline: #242424;
+  --color-o-cmut: #93938d;
+
+  /* The viewer is a plain Vite SPA (no next/font), so the actual families are
+     loaded via the Google Fonts <link> in index.html and named directly here —
+     matching the app's type system: Geist UI/display, JetBrains mono chrome,
+     Instrument Serif editorial. */
+  --font-jetbrains: "JetBrains Mono";
+  --font-geist: "Geist";
+  --font-instrument: "Instrument Serif";
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", monospace;
+  --font-display: var(--font-geist), "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument), "Instrument Serif", Georgia, "Times New Roman", serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-ink-0);
+  color: var(--color-ink-8);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Dark theme tokens. Applied two ways:
+   • html.theme-dark  — the app-wide dark mode (toggled in the top bar, persisted).
+   • .atlas-dark      — the atlas always darkens its chrome, even in light mode.
+   Only the neutral chrome tokens flip; language + hotspot hues stay true. */
+.theme-dark,
+.atlas-dark {
+  --color-ink-0: #07080c;
+  --color-ink-1: #0d0f15;
+  --color-ink-2: #14161e;
+  --color-ink-3: #1c1f29;
+  --color-ink-4: #2a2e3b;
+  --color-ink-5: #6b7280;
+  --color-ink-6: #9aa3b2;
+  --color-ink-7: #c8cfdb;
+  --color-ink-8: #f2f5fa;
+
+  --color-bg: #07080c;
+  --color-bg-elev: #0e1016;
+  --color-fg: #f2f5fa;
+  --color-muted: #8b93a3;
+  --color-border: #1c1f29;
+  /* The brand amber, not light — so the many `bg-accent text-white` buttons stay
+     readable AND `text-accent` emphasis still pops against the dark. */
+  --color-accent: #d2722e;
+}
+
+/* Tight uppercase mono section label — used throughout the chrome. */

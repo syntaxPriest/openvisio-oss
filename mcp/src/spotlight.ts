@@ -12,6 +12,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as nodePath from 'node:path'
 
 /**
@@ -325,6 +326,10 @@ export function startSpotlightServer(
       handleEmitRoute(req, res, bus)
       return
     }
+    if (url.startsWith('/api/fs/browse')) {
+      handleFsBrowseRoute(req, res, url)
+      return
+    }
     if (url.startsWith('/api/spotlight')) {
       res.writeHead(200, {
         ...CORS_HEADERS,
@@ -520,4 +525,107 @@ function handleIndexRoute(req: IncomingMessage, res: ServerResponse, url: string
   }
   res.writeHead(405, CORS_HEADERS)
   res.end('method not allowed')
+}
+
+interface FsDirEntry {
+  name: string
+  path: string
+  isGitRepo: boolean
+  isHidden: boolean
+}
+
+/** Resolve raw user input to an absolute dir, expanding `~` and rooting relative
+ *  paths at $HOME (the server cwd is an implementation detail the user can't see). */
+function resolveBrowseInput(raw: string | null): string {
+  const home = os.homedir()
+  if (!raw || raw.trim().length === 0) return home
+  let p = raw.trim()
+  if (p === '~') return home
+  if (p.startsWith('~/') || p.startsWith('~\\')) p = nodePath.join(home, p.slice(2))
+  if (!nodePath.isAbsolute(p)) p = nodePath.join(home, p)
+  return nodePath.resolve(p)
+}
+
+/**
+ * Local filesystem directory browser — powers the "browse" folder picker in the
+ * viewer's indexing dialog. Lists subdirectories only (never file contents),
+ * flags which folders look like git repos, and resolves `~`/relative input
+ * against $HOME. Read-only and local-only, consistent with the indexer's trust
+ * boundary (the server already reads local repos to index them).
+ *   GET /api/fs/browse?path=<dir>  → 200 { path, parent, home, separator, entries[] }
+ */
+function handleFsBrowseRoute(req: IncomingMessage, res: ServerResponse, url: string): void {
+  const json = (status: number, body: unknown) => {
+    res.writeHead(status, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(body))
+  }
+  if (req.method !== 'GET') {
+    res.writeHead(405, CORS_HEADERS)
+    res.end('method not allowed')
+    return
+  }
+
+  const q = url.indexOf('?')
+  const params = new URLSearchParams(q === -1 ? '' : url.slice(q + 1))
+  const target = resolveBrowseInput(params.get('path'))
+
+  void (async () => {
+    try {
+      const stat = await fs.promises.stat(target)
+      if (!stat.isDirectory()) {
+        json(400, { error: `Not a directory: ${target}` })
+        return
+      }
+    } catch {
+      json(404, { error: `Cannot access: ${target}` })
+      return
+    }
+
+    let dirents
+    try {
+      dirents = await fs.promises.readdir(target, { withFileTypes: true })
+    } catch {
+      json(403, { error: `Permission denied: ${target}` })
+      return
+    }
+
+    const entries: FsDirEntry[] = []
+    for (const d of dirents) {
+      // Symlinks report isDirectory() === false; resolve them so symlinked
+      // repos still appear as navigable folders.
+      let isDir = d.isDirectory()
+      if (d.isSymbolicLink()) {
+        try {
+          isDir = (await fs.promises.stat(nodePath.join(target, d.name))).isDirectory()
+        } catch {
+          isDir = false
+        }
+      }
+      if (!isDir) continue
+
+      const full = nodePath.join(target, d.name)
+      let isGitRepo = false
+      try {
+        isGitRepo = (await fs.promises.stat(nodePath.join(full, '.git'))).isDirectory()
+      } catch {
+        // not a git repo (or .git is a file/worktree pointer we don't probe)
+      }
+      entries.push({ name: d.name, path: full, isGitRepo, isHidden: d.name.startsWith('.') })
+    }
+
+    // Git repos first, then alphabetical, case-insensitive.
+    entries.sort((a, b) => {
+      if (a.isGitRepo !== b.isGitRepo) return a.isGitRepo ? -1 : 1
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+
+    const parent = nodePath.dirname(target)
+    json(200, {
+      path: target,
+      parent: parent === target ? null : parent,
+      home: os.homedir(),
+      separator: nodePath.sep,
+      entries,
+    })
+  })()
 }

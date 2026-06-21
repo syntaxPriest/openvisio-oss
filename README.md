@@ -10,6 +10,12 @@
 > coding agents, and a **local-first visual map** for humans. No LLM in the engine,
 > no network, your code never leaves your machine.
 
+<p align="center">
+  <img src="docs/images/viewer.png" alt="OpenVisio viewer — the Atlas view of a large codebase, with files and symbols as a constellation linked by amber import and call edges" width="100%">
+  <br>
+  <em>The viewer's <strong>Atlas</strong> view — every file and symbol as a constellation linked by imports, definitions, and calls (here: a 93K-file repo).</em>
+</p>
+
 OpenVisio parses any repository with tree-sitter into a symbol + import graph,
 ranks it with PageRank, and serves it two ways:
 
@@ -58,18 +64,82 @@ See [`bench/`](bench/) for the token-savings methodology and an A/B protocol.
 
 ## Run the viewer
 
-The viewer is a local-first Next.js app. It indexes a repo with the same engine
-and renders the **Atlas** and **City** views.
+Once `openvisio` is installed, `view` indexes a repo and opens the bundled
+**Atlas** and **City** views in your browser — zero install, served from
+`127.0.0.1`:
 
 ```bash
-npm run build        # build the engine + CLI first (the viewer indexes with it)
-cd ui
-npm install
-npm run dev          # http://localhost:3000
+openvisio view            # index the current repo and open the viewer
+openvisio view ../other   # …or any other local repo
 ```
 
-Point it at a local folder or a Git URL; everything is indexed and rendered on
-your machine.
+The viewer ships in the `openvisio-viewer` package: the same React/Three.js
+Atlas + City views, as a self-contained static bundle. It opens on the **Atlas**
+by default; switch to **City** with the view toggle (top-right). Click **Index**
+to point it at any local repo — browse the filesystem in the built-in folder
+picker (git repos are flagged) or type a path — and a staged progress loader runs
+while the deterministic engine indexes. Click any node to focus it. Nothing
+leaves your machine.
+
+**Watch your agent think.** `view` defaults to the spotlight port (7077), so it
+doubles as the live-highlight hub: leave it running, point your agent at the repo
+with `openvisio mcp . --spotlight`, and each tool call focuses the file it's
+looking at — in real time.
+
+From a clone, build the workspace first (`npm run build` builds the engine, the
+viewer, and the CLI), then `node mcp/dist/cli.js view .`.
+
+---
+
+## Languages
+
+OpenVisio parses these into symbols and import/call edges (tree-sitter grammars).
+Any other text file is still scanned as a graph node — templates (Twig, Blade),
+Markdown, and EDA/hardware files (KiCad, Gerber) get a language label without
+parsed symbols, so nothing in the repo is invisible.
+
+| Language           | Extensions                          |
+| ------------------ | ----------------------------------- |
+| TypeScript         | `.ts`, `.mts`, `.cts`               |
+| TSX                | `.tsx`                              |
+| JavaScript         | `.js`, `.jsx`, `.mjs`, `.cjs`       |
+| Python             | `.py`, `.pyi`                       |
+| Go                 | `.go`                               |
+| Rust               | `.rs`                               |
+| Java               | `.java`                             |
+| C                  | `.c`, `.h`                          |
+| C++                | `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hh`|
+| C#                 | `.cs`                               |
+| Kotlin             | `.kt`, `.kts`                       |
+| Ruby               | `.rb`                               |
+| PHP                | `.php`                              |
+| Swift              | `.swift` (disabled by default)      |
+| Scala              | `.scala`                            |
+| Dart               | `.dart`                             |
+| Zig                | `.zig`                              |
+| Lua                | `.lua`                              |
+| R                  | `.r`, `.R`                          |
+| Elixir             | `.ex`, `.exs`                       |
+| Elm                | `.elm`                              |
+| OCaml              | `.ml`, `.mli`                       |
+| ReScript           | `.res`                              |
+| Solidity           | `.sol`                              |
+| TLA+               | `.tla`                              |
+| Objective-C        | `.m`, `.mm`                         |
+| Bash               | `.sh`, `.bash`                      |
+| Vue                | `.vue`                              |
+| HTML               | `.html`, `.htm`                     |
+| CSS                | `.css`                              |
+| JSON               | `.json`                             |
+| YAML               | `.yaml`, `.yml`                     |
+| TOML               | `.toml`                             |
+| Embedded Template  | `.erb`, `.ejs`                      |
+| SystemRDL          | `.rdl`                              |
+| QL                 | `.ql`                               |
+| Emacs Lisp         | `.el`                               |
+
+> Swift's grammar is heavy enough to crash V8's WASM compiler on some machines,
+> so it's off by default — enable it with `OPENVISIO_ENABLE_GRAMMARS=swift`.
 
 ---
 
@@ -79,7 +149,8 @@ your machine.
 |------|------------|
 | [`core/`](core/) | `@openvisio/core` — the deterministic code-graph engine (tree-sitter parse, import resolution, PageRank, token-budgeted skeletons). |
 | [`mcp/`](mcp/) | `openvisio` — the published MCP server + CLI. Bundles `core` into a single self-contained binary. |
-| [`ui/`](ui/) | The local-first viewer (Atlas + City). |
+| [`viewer/`](viewer/) | `openvisio-viewer` — the bundled Atlas + City app that `openvisio view` serves (React + Three.js, built to a static bundle). |
+| [`ui/`](ui/) | Full Next.js web app (Atlas + City + AI narrator). |
 | [`bench/`](bench/) | Token-savings estimator + A/B measurement protocol. |
 | [`docs/`](docs/) | Engine, graph, and MCP integration notes. |
 

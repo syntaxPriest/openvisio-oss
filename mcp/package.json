@@ -1,6 +1,6 @@
 {
   "name": "openvisio",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "See any codebase as a graph. MCP server + CLI that serves coding agents (Claude Code, Codex, Cursor) a token-cheap, ranked, graph-native query surface over a local repo — agents query structure instead of crawling files. Local-first, read-only, no network.",
   "type": "module",
   "license": "MIT",
@@ -45,7 +45,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "lmdb": "^3.2.6",
-    "openvisio-viewer": "^0.1.0",
+    "openvisio-viewer": "^0.2.0",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "~0.25.10",
     "zod": "^4.4.3"

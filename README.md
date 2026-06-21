@@ -10,6 +10,12 @@
 > coding agents, and a **local-first visual map** for humans. No LLM in the engine,
 > no network, your code never leaves your machine.
 
+<p align="center">
+  <img src="docs/images/viewer.png" alt="OpenVisio viewer — the Atlas view of a large codebase, with files and symbols as a constellation linked by amber import and call edges" width="100%">
+  <br>
+  <em>The viewer's <strong>Atlas</strong> view — every file and symbol as a constellation linked by imports, definitions, and calls (here: a 93K-file repo).</em>
+</p>
+
 OpenVisio parses any repository with tree-sitter into a symbol + import graph,
 ranks it with PageRank, and serves it two ways:
 
@@ -68,8 +74,11 @@ openvisio view ../other   # …or any other local repo
 ```
 
 The viewer ships in the `openvisio-viewer` package: the same React/Three.js
-Atlas + City views, as a self-contained static bundle. Toggle between them, click
-to focus a file, and re-index any other local repo from the path box. Nothing
+Atlas + City views, as a self-contained static bundle. It opens on the **Atlas**
+by default; switch to **City** with the view toggle (top-right). Click **Index**
+to point it at any local repo — browse the filesystem in the built-in folder
+picker (git repos are flagged) or type a path — and a staged progress loader runs
+while the deterministic engine indexes. Click any node to focus it. Nothing
 leaves your machine.
 
 **Watch your agent think.** `view` defaults to the spotlight port (7077), so it

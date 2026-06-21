@@ -25,6 +25,10 @@ export class LmdbStore implements Store {
     this.db.removeSync(key)
   }
 
+  clear(): void {
+    this.db.clearSync()
+  }
+
   sync(): void {
     this.db.transactionSync(() => {})
   }

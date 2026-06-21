@@ -40,6 +40,12 @@ network, your code never leaves your machine.**
 > [viewer](https://github.com/syntaxpriest/openvisio-oss) is for the human. They
 > share the same index.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/syntaxpriest/openvisio-oss/main/docs/images/viewer.png" alt="OpenVisio viewer — the Atlas view of a large codebase, with files and symbols linked by amber import and call edges" width="100%">
+  <br>
+  <em>The viewer's <strong>Atlas</strong> view (<code>openvisio view</code>) — every file and symbol as a constellation linked by imports, definitions, and calls.</em>
+</p>
+
 ---
 
 ## Why
@@ -129,10 +135,13 @@ openvisio export [path] [--out=.openvisio/graph.json]           # emit the graph
   package) on `127.0.0.1`, then opens your browser. City is a 3D treemap
   (districts = folders, buildings = files, sized by LOC, colored by language);
   Atlas is a file/symbol constellation linked by imports, definitions, and calls.
-  Toggle between them, click to focus, and re-index any other local repo from the
-  path box. `--no-open` just prints the URL. It defaults to the spotlight port
-  (7077) and acts as the highlight hub: with `view` running, start your agent
-  with `openvisio mcp . --spotlight` and its tool calls focus the graph live.
+  It opens on the Atlas by default; switch to City with the view toggle. Click
+  **Index** to browse the filesystem (git repos are flagged) or type a path and
+  index any other local repo, with a staged progress loader while it builds, then
+  click to focus a node. `--no-open` just prints the URL. It defaults to the
+  spotlight port (7077) and acts as the highlight hub: with `view` running, start
+  your agent with `openvisio mcp . --spotlight` and its tool calls focus the graph
+  live.
 
 ---
 

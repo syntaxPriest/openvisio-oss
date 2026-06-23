@@ -22,18 +22,17 @@ function signatureOf(def: Node): string {
   return sig.length > 200 ? sig.slice(0, 197) + '…' : sig
 }
 
-/** Parse one file into its public-surface symbols and raw import specifiers.
- *  `parseTimeoutMs` limits how long tree-sitter may spend on a single file
- *  (default no limit); on timeout the file silently yields an empty result. */
-export async function parseFile(relPath: string, content: string, parseTimeoutMs?: number): Promise<ParseResult> {
+/** Parse one file into its public-surface symbols and raw import specifiers. */
+export async function parseFile(relPath: string, content: string): Promise<ParseResult> {
   const grammar = grammarForFile(relPath)
   if (!grammar) return { symbols: [], imports: [], calls: [] }
   const config: GrammarConfig | undefined = GRAMMARS[grammar]
   if (!config) return { symbols: [], imports: [], calls: [] }
   let root
   try {
-    root = await parseSource(grammar, content, parseTimeoutMs)
-  } catch {
+    root = await parseSource(grammar, content)
+  } catch (err) {
+    console.error(`[parse] parseSource failed for ${relPath}: ${err instanceof Error ? err.message : String(err)}`)
     return { symbols: [], imports: [], calls: [] }
   }
   const queries = getOrCompileQueries(grammar, config)

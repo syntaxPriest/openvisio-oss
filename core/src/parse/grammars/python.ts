@@ -45,7 +45,7 @@ export const python: GrammarConfig = {
   symbolQuery: PY_SYMBOLS,
   importQuery: PY_IMPORTS,
   callQuery: PY_CALLS,
-  keep: (def) => def.parent?.type === 'module',
+  keep: () => true,
   exported: (def, name) => def.parent?.type === 'module' && !name.startsWith('_'),
   importSpecifier: (n) => n.text,
   resolveImport: resolvePython,

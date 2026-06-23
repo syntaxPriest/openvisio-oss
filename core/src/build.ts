@@ -105,10 +105,7 @@ function resolveImport(
   return config.resolveImport(file.path, spec, bySet, aliases)
 }
 
-export interface BuildOptions extends ScanOptions {
-  /** Max milliseconds to spend parsing a single file. 0 or undefined = no limit. */
-  parseTimeoutMs?: number
-}
+export interface BuildOptions extends ScanOptions {}
 
 export async function buildGraph(rootPath: string, opts: BuildOptions = {}): Promise<CodeGraph> {
   const absRoot = path.resolve(rootPath)
@@ -117,7 +114,7 @@ export async function buildGraph(rootPath: string, opts: BuildOptions = {}): Pro
     ...opts,
     extraExcludes: [...(opts.extraExcludes ?? []), ...aliases.excludes],
   })
-  return assembleGraph(absRoot, scanned, { aliases, parseTimeoutMs: opts.parseTimeoutMs ?? 10000 })
+  return assembleGraph(absRoot, scanned, { aliases })
 }
 
 /** In-memory parse result cache keyed by content SHA. */
@@ -127,7 +124,8 @@ export interface AssembleContext {
   cache?: ParseCache | Store
   idByPath?: Map<string, number>
   aliases?: TsAliases
-  parseTimeoutMs?: number
+  /** When true, the cache was just wiped — skip reads since they'll all miss. */
+  cacheFresh?: boolean
 }
 
 export async function assembleGraph(
@@ -189,9 +187,11 @@ export async function assembleGraph(
   const parseOne = async (sf: ScannedFile): Promise<ParseResult> => {
     if (cache && 'get' in cache && 'set' in cache) {
       const store = cache as Store
-      const key = `parse:${sf.sha}`
-      const raw = store.get(key)
-      if (raw) return JSON.parse(new TextDecoder().decode(raw)) as ParseResult
+      if (!ctx.cacheFresh) {
+        const key = `parse:${sf.sha}`
+        const raw = store.get(key)
+        if (raw) return JSON.parse(new TextDecoder().decode(raw)) as ParseResult
+      }
     } else {
       const pc = cache as ParseCache | undefined
       const cached = pc?.get(sf.sha)
@@ -199,7 +199,7 @@ export async function assembleGraph(
     }
     let parsed: ParseResult
     try {
-      parsed = await parseFile(sf.relPath, sf.content, ctx.parseTimeoutMs)
+      parsed = await parseFile(sf.relPath, sf.content)
     } catch (err) {
       console.error(`[build] parse error for ${sf.relPath}: ${err}`)
       parsed = { symbols: [], imports: [], calls: [] }
@@ -215,7 +215,7 @@ export async function assembleGraph(
   }
 
   // Phase 2: parse files in concurrent batches of 500.
-  const BATCH = 500
+  const BATCH = 1000
   const totalBatches = Math.ceil(scanned.length / BATCH)
   console.error(`[build] phase 2: parsing ${scanned.length} files in ${totalBatches} batches of ${BATCH}`)
   for (let i = 0; i < scanned.length; i += BATCH) {
@@ -224,6 +224,7 @@ export async function assembleGraph(
     console.error(`[build] batch ${batchNum}/${totalBatches} (${batch.length} files)`)
     const results = await Promise.all(batch.map((sf) => parseOne(sf)))
     let emptyCount = 0
+    let noGrammarCount = 0
     for (let j = 0; j < batch.length; j++) {
       const sf = batch[j]!
       const parsed = results[j]!
@@ -239,9 +240,12 @@ export async function assembleGraph(
       rawCallsByFile.set(fileId, parsed.calls ?? [])
       if (grammarForFile(sf.relPath) && parsed.symbols.length === 0 && parsed.imports.length === 0) {
         emptyCount++
+      } else if (!grammarForFile(sf.relPath)) {
+        noGrammarCount++
       }
     }
     if (emptyCount > 0) console.error(`[build] batch ${batchNum} done (${emptyCount} empty — timeout/crash)`)
+    if (noGrammarCount > 0) console.error(`[build] batch ${batchNum} done (${noGrammarCount} files with no grammar mapping)`)
   }
   console.error(`[build] phase 2 done: ${symbols.length} symbols extracted`)
 
@@ -324,13 +328,18 @@ export async function assembleGraph(
     set.add(e.targetId)
   }
   const enclosing = (fileSymbols: CodeSymbol[], line: number): CodeSymbol | null => {
-    let best: CodeSymbol | null = null
-    for (const s of fileSymbols) {
-      if (s.startLine <= line && line <= s.endLine) {
-        if (!best || s.endLine - s.startLine < best.endLine - best.startLine) best = s
-      }
+    let lo = 0
+    let hi = fileSymbols.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (fileSymbols[mid]!.startLine <= line) lo = mid + 1
+      else hi = mid
     }
-    return best
+    for (let i = lo - 1; i >= 0; i--) {
+      const s = fileSymbols[i]!
+      if (s.endLine >= line) return s
+    }
+    return null
   }
   const resolveCallee = (name: string, fromFileId: number): CodeSymbol | null => {
     const cands = nameIndex.get(name)
@@ -439,6 +448,7 @@ export class Indexer {
   readonly absRoot: string
   private readonly dbPath?: string
   private store?: Store
+  private storeFresh = false
 
   constructor(
     private readonly rootPath: string,
@@ -453,25 +463,22 @@ export class Indexer {
     if (this.dbPath && !this.store) {
       const { LmdbStore } = await import('./stores/lmdb.js')
       this.store = new LmdbStore(this.dbPath)
-      this.ensureCacheVersion(this.store)
+      this.storeFresh = this.ensureCacheVersion(this.store)
     }
     return (await this.run()).graph
   }
 
-  /**
-   * Wipe the cache if it was written by a different engine version. A same-SHA
-   * parse result (or persisted file id) from an older engine is NOT safe to
-   * reuse — it can drop import/call edges or alias symbols to the wrong file —
-   * so on a version mismatch we clear everything and start the cache fresh.
-   */
-  private ensureCacheVersion(store: Store): void {
+  /** Returns true if the store was just cleared (cache is known empty). */
+  private ensureCacheVersion(store: Store): boolean {
     const want = new TextEncoder().encode(String(CACHE_VERSION))
     const have = store.get(CACHE_VERSION_KEY)
     if (!have || !bytesEqual(have, want)) {
       store.clear()
       store.set(CACHE_VERSION_KEY, want)
       store.sync()
+      return true
     }
+    return false
   }
 
   async reindex(): Promise<{ graph: CodeGraph; changes: IndexChanges }> {
@@ -537,7 +544,7 @@ export class Indexer {
       cache: this.store ?? this.cache,
       idByPath: this.idByPath,
       aliases: this.aliasesCache,
-      parseTimeoutMs: this.opts.parseTimeoutMs,
+      cacheFresh: this.storeFresh,
     })
 
     // Persist file IDs + SHA-512 change tracker to store.
@@ -551,6 +558,7 @@ export class Indexer {
       this.store.sync()
     }
 
+    this.storeFresh = false // next run can read from cache
     return { graph, changes }
   }
 }

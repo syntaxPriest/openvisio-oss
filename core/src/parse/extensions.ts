@@ -21,6 +21,8 @@ export const EXT_TO_GRAMMAR: Record<string, GrammarId> = {
   cxx: 'cpp',
   hpp: 'cpp',
   hh: 'cpp',
+  cu: 'cpp',
+  cuh: 'cpp',
   cs: 'c_sharp',
   kt: 'kotlin',
   kts: 'kotlin',

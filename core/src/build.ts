@@ -105,7 +105,10 @@ function resolveImport(
   return config.resolveImport(file.path, spec, bySet, aliases)
 }
 
-export interface BuildOptions extends ScanOptions {}
+export interface BuildOptions extends ScanOptions {
+  /** Max milliseconds to spend parsing a single file. 0 or undefined = no limit. */
+  parseTimeoutMs?: number
+}
 
 export async function buildGraph(rootPath: string, opts: BuildOptions = {}): Promise<CodeGraph> {
   const absRoot = path.resolve(rootPath)
@@ -114,7 +117,7 @@ export async function buildGraph(rootPath: string, opts: BuildOptions = {}): Pro
     ...opts,
     extraExcludes: [...(opts.extraExcludes ?? []), ...aliases.excludes],
   })
-  return assembleGraph(absRoot, scanned, { aliases })
+  return assembleGraph(absRoot, scanned, { aliases, parseTimeoutMs: opts.parseTimeoutMs ?? 10000 })
 }
 
 /** In-memory parse result cache keyed by content SHA. */
@@ -124,6 +127,7 @@ export interface AssembleContext {
   cache?: ParseCache | Store
   idByPath?: Map<string, number>
   aliases?: TsAliases
+  parseTimeoutMs?: number
 }
 
 export async function assembleGraph(
@@ -195,7 +199,7 @@ export async function assembleGraph(
     }
     let parsed: ParseResult
     try {
-      parsed = await parseFile(sf.relPath, sf.content)
+      parsed = await parseFile(sf.relPath, sf.content, ctx.parseTimeoutMs)
     } catch (err) {
       console.error(`[build] parse error for ${sf.relPath}: ${err}`)
       parsed = { symbols: [], imports: [], calls: [] }
@@ -219,6 +223,7 @@ export async function assembleGraph(
     const batchNum = i / BATCH + 1
     console.error(`[build] batch ${batchNum}/${totalBatches} (${batch.length} files)`)
     const results = await Promise.all(batch.map((sf) => parseOne(sf)))
+    let emptyCount = 0
     for (let j = 0; j < batch.length; j++) {
       const sf = batch[j]!
       const parsed = results[j]!
@@ -232,7 +237,11 @@ export async function assembleGraph(
       symbolsByFile.set(fileId, fileSymbols)
       rawImportsByFile.set(fileId, parsed.imports)
       rawCallsByFile.set(fileId, parsed.calls ?? [])
+      if (grammarForFile(sf.relPath) && parsed.symbols.length === 0 && parsed.imports.length === 0) {
+        emptyCount++
+      }
     }
+    if (emptyCount > 0) console.error(`[build] batch ${batchNum} done (${emptyCount} empty — timeout/crash)`)
   }
   console.error(`[build] phase 2 done: ${symbols.length} symbols extracted`)
 
@@ -528,6 +537,7 @@ export class Indexer {
       cache: this.store ?? this.cache,
       idByPath: this.idByPath,
       aliases: this.aliasesCache,
+      parseTimeoutMs: this.opts.parseTimeoutMs,
     })
 
     // Persist file IDs + SHA-512 change tracker to store.

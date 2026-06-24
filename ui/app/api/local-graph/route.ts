@@ -16,9 +16,13 @@ function cliPath(): string {
   return process.env.OPENVISIO_CLI || path.resolve(process.cwd(), '..', 'mcp', 'dist', 'cli.js')
 }
 
+const GRAPH_TTL_MS = Number(process.env.OPENVISIO_GRAPH_TTL_MIN || '60') * 60 * 1000
+
 function isGraphFresh(outFile: string, repoPath: string): boolean {
   try {
     const graphStat = fs.statSync(outFile)
+    // TTL: if the cached graph is older than the max age, treat as stale.
+    if (Date.now() - graphStat.mtimeMs > GRAPH_TTL_MS) return false
     // Compare against .git/index which git touches on any staged/committed change.
     // If .git/index doesn't exist (bare checkout, tarball), treat as stale.
     const ref = path.join(repoPath, '.git', 'index')

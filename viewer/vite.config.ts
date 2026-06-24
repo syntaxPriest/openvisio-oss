@@ -9,7 +9,12 @@ import * as path from 'node:path'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { '@': path.resolve(__dirname, 'src') },
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+      // The engine's grammar configs import `node:path` (path.posix) for import
+      // resolution — shim it so they run in the browser bundle.
+      'node:path': path.resolve(__dirname, 'src/shims/node-path.ts'),
+    },
   },
   base: './', // assets referenced relative, so the static server can host at /
   build: {

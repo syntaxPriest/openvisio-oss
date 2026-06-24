@@ -120,6 +120,7 @@ every turn, so a fat surface re-creates the bloat we're removing.
 openvisio [init] [path] [--global] [--cursor]   # register with agents + first index
 openvisio mcp [path] [--watch] [--spotlight]    # MCP server over stdio
 openvisio view [path] [--port=7077] [--no-open] # open the local graph viewer in a browser
+openvisio transport [path] [--server=https://openvisio.io] [--no-open]  # index locally, ship the graph to a web viewer
 openvisio skeleton [path] [--budget=1500] [--task="add oauth"]  # print the ranked map
 openvisio export [path] [--out=.openvisio/graph.json]           # emit the graph as JSON
 ```
@@ -142,6 +143,13 @@ openvisio export [path] [--out=.openvisio/graph.json]           # emit the graph
   spotlight port (7077) and acts as the highlight hub: with `view` running, start
   your agent with `openvisio mcp . --spotlight` and its tool calls focus the graph
   live.
+- `transport` is the shareable cousin of `view`: it indexes the repo **locally**
+  (your source stays on your machine), writes a cached copy to
+  `<repo>/.openvisio/graph.json`, then `POST`s **only the computed graph JSON** to
+  `<server>/api/import` and opens the rendered Atlas/City + AI narrator at
+  `<server>/?g=<id>`. The destination defaults to `https://openvisio.io`; override
+  it with `--server` or the `OPENVISIO_SERVER` env var. `--no-open` just prints the
+  URL.
 
 ---
 

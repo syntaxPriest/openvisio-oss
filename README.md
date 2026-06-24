@@ -91,6 +91,34 @@ viewer, and the CLI), then `node mcp/dist/cli.js view .`.
 
 ---
 
+## Share a graph (transport)
+
+`view` keeps everything on `127.0.0.1`. When you want a **shareable link** — the
+same Atlas/City map plus an AI **narrator** — without uploading your source,
+`transport` does the split: it indexes the repo **locally** (the heavy
+tree-sitter scan stays on your machine, private and fast) and ships **only the
+computed graph JSON** to a web server that renders it.
+
+```bash
+openvisio transport                 # index the current repo, upload the graph, open the link
+openvisio transport ../other        # …or any other local repo
+openvisio transport --no-open       # just print the URL, don't open a browser
+openvisio transport --server=https://your-host   # send to your own deployment
+```
+
+What happens:
+
+1. Index locally → build the deterministic graph.
+2. Write a cached copy to `<repo>/.openvisio/graph.json` (auto-added to `.gitignore`).
+3. `POST` just that graph JSON to `<server>/api/import`.
+4. Open the rendered graph + narrator at `<server>/?g=<id>`.
+
+Your source never leaves your machine — only the symbol/import graph is sent. The
+destination defaults to `https://openvisio.io`; override it per-run with
+`--server` or globally with the `OPENVISIO_SERVER` environment variable.
+
+---
+
 ## Languages
 
 OpenVisio parses these into symbols and import/call edges (tree-sitter grammars).

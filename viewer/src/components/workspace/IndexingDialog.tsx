@@ -103,7 +103,7 @@ export function IndexingDialog({ open, initialPath, busy, error, onStart, onCanc
             ) : (
               <>
                 <label className="mt-5 block font-mono text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-ink-5)]">
-                  Local repo path
+                  GitHub repo or local path
                 </label>
                 <input
                   type="text"
@@ -113,14 +113,15 @@ export function IndexingDialog({ open, initialPath, busy, error, onStart, onCanc
                     if (e.key === 'Enter') start()
                   }}
                   spellCheck={false}
-                  placeholder="/absolute/path/to/local/repo"
+                  placeholder="github.com/owner/repo   ·   or   /local/path"
                   className={cn(
                     'mt-1.5 block w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-2 font-mono text-[12px] text-[color:var(--color-ink-8)] outline-none',
                     'focus:border-[color:var(--color-ink-7)]',
                   )}
                 />
                 <p className="mt-1.5 text-[10px] text-[color:var(--color-ink-5)] font-mono">
-                  The path is read in place — nothing is copied or sent anywhere.
+                  A GitHub URL is fetched + indexed in your browser. A local path is read in
+                  place by the CLI — nothing is copied or sent anywhere.
                 </p>
               </>
             )}

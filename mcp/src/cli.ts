@@ -12,6 +12,7 @@ import { toExportPayload } from './adapter.js'
 import { serveMcp } from './server.js'
 import { serveAgent } from './agent.js'
 import { serveViewer } from './viewer.js'
+import { runTransport } from './transport.js'
 import { startSpotlightServer } from './spotlight.js'
 import { runInit, runGlobalInit } from './init.js'
 
@@ -87,6 +88,12 @@ function printUsage(): void {
   '  openvisio index [path] [--out=.openvisio/graph.json]',
       '      Build the graph and write it where the viewer reads it (default:',
       '      <repo>/.openvisio/graph.json). Prints a one-line summary, not the JSON.',
+      '',
+      '  openvisio transport [path] [--server=https://openvisio.io] [--no-open]',
+      '      Index the repo LOCALLY, then ship just the graph JSON to the web',
+      '      server and open the rendered graph + narrator in your browser. Your',
+      '      source never leaves your machine — only the computed graph is sent.',
+      '      Override the destination with --server or OPENVISIO_SERVER.',
       '',
       '  openvisio view [path] [--port=7077] [--no-open]',
       '      Index a local repo and open the bundled graph viewer in your browser.',
@@ -315,6 +322,15 @@ async function main(): Promise<number> {
           `${graph.edges.length.toLocaleString('en-US')} edges in ${(ms / 1000).toFixed(1)}s → ${out}\n`,
       )
       return 0
+    }
+    case 'transport': {
+      // Index locally, then ship the graph JSON to a web server that renders it.
+      const root = args.positional[0] ?? process.cwd()
+      const serverRaw = args.flags.get('server')
+      const server = serverRaw && serverRaw !== 'true' ? serverRaw : process.env.OPENVISIO_SERVER || 'https://openvisio.io'
+      const outRaw = args.flags.get('out')
+      const out = outRaw && outRaw !== 'true' ? outRaw : undefined
+      return runTransport({ rootPath: root, server, out, open: !args.flags.has('no-open') })
     }
     case 'help':
     case '--help':

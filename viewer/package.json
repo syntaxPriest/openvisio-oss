@@ -1,6 +1,6 @@
 {
   "name": "openvisio-viewer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Self-contained Atlas + City graph viewer for OpenVisio — the same React/Three.js views from the app, served locally by `openvisio view`.",
   "license": "MIT",
   "type": "module",
@@ -31,6 +31,10 @@
     "three-stdlib": "^2.35.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "web-tree-sitter": "~0.25.10",
+    "@openvisio/core": "*",
+    "path-browserify": "^1.0.1",
+    "@netlify/blobs": "^8.1.0"
   }
 }

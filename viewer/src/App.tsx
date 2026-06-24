@@ -10,6 +10,7 @@ import { CityView } from '@/components/city/CityView'
 import { IndexingDialog } from '@/components/workspace/IndexingDialog'
 import { IndexingProgress } from '@/components/workspace/IndexingProgress'
 import { GraphResponseSchema, type GraphResponse } from '@/lib/api/types'
+import { indexGithubRepo, parseGithubUrl, type FetchProgress } from '@/indexer/github'
 import { cn } from '@/lib/utils'
 
 type Mode = 'city' | 'atlas'
@@ -27,6 +28,13 @@ const MODES: ModeDef[] = [
   { id: 'city', label: 'City', icon: Building2, hint: 'Your code as a city' },
 ]
 
+// Human label for the in-browser GitHub fetch/index phases.
+function progressLabel(p: FetchProgress): string {
+  if (p.phase === 'tree') return 'Reading repository tree…'
+  if (p.phase === 'fetch') return `Fetching files… ${p.loaded ?? 0}/${p.total ?? '?'}`
+  return 'Parsing in your browser…'
+}
+
 export function App() {
   const [source, setSource] = useState<string>(() => new URLSearchParams(location.search).get('path') ?? '')
   const [graph, setGraph] = useState<GraphResponse | null>(null)
@@ -35,21 +43,31 @@ export function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [progress, setProgress] = useState<string | null>(null)
   const [agent, setAgent] = useState<'off' | 'idle' | 'live'>('off')
   const [agentTool, setAgentTool] = useState<string>('')
 
   // No AI narrator here, so nothing is cited — the views take an empty map.
   const citations = useMemo(() => new Map<number, number>(), [])
 
-  const indexRepo = useCallback(async (repoPath: string) => {
-    if (!repoPath) return
+  const indexRepo = useCallback(async (input: string) => {
+    if (!input) return
     setLoading(true)
     setError(null)
+    setProgress(null)
     try {
-      const res = await fetch('/api/graph?path=' + encodeURIComponent(repoPath))
-      const body = await res.json()
-      if (!res.ok) throw new Error(body?.error ?? 'index failed (' + res.status + ')')
-      setGraph(GraphResponseSchema.parse(body.graph))
+      let g: GraphResponse
+      if (parseGithubUrl(input)) {
+        // GitHub repo → fetch + index entirely in the browser (no server).
+        g = await indexGithubRepo(input, { onProgress: (p) => setProgress(progressLabel(p)) })
+      } else {
+        // Local path → the `openvisio view` server indexes it (CLI mode).
+        const res = await fetch('/api/graph?path=' + encodeURIComponent(input))
+        const body = await res.json()
+        if (!res.ok) throw new Error(body?.error ?? 'index failed (' + res.status + ')')
+        g = GraphResponseSchema.parse(body.graph)
+      }
+      setGraph(g)
       setFocusedFileId(null)
       setDialogOpen(false) // success — drop the dialog and reveal the map
     } catch (err) {
@@ -57,14 +75,34 @@ export function App() {
       setGraph(null)
     } finally {
       setLoading(false)
+      setProgress(null)
     }
   }, [])
+
+  // A transported graph (?g=<id>): fetch the pre-computed graph the CLI uploaded
+  // and render it — no indexing here, the work already happened on the machine.
+  const transportedId = useMemo(() => new URLSearchParams(location.search).get('g'), [])
+  useEffect(() => {
+    if (!transportedId) return
+    setLoading(true)
+    setError(null)
+    fetch('/api/import?id=' + encodeURIComponent(transportedId))
+      .then(async (r) => {
+        const body = await r.json()
+        if (!r.ok) throw new Error(body?.error ?? 'graph not found (' + r.status + ')')
+        setGraph(GraphResponseSchema.parse(body.graph))
+        setDialogOpen(false)
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false))
+  }, [transportedId])
 
   // Index whatever ?path= we booted with (or the user re-indexes via the dialog).
   useEffect(() => { if (source) void indexRepo(source) }, [source, indexRepo])
 
-  // Open the index dialog by hand when there's no repo yet (first run, no ?path=).
-  useEffect(() => { if (!source) setDialogOpen(true) }, [source])
+  // Open the index dialog by hand when there's nothing to show yet (no ?path=,
+  // no transported ?g=).
+  useEffect(() => { if (!source && !transportedId) setDialogOpen(true) }, [source, transportedId])
 
   const startIndex = useCallback((repoPath: string) => {
     const p = repoPath.trim()
@@ -175,7 +213,7 @@ export function App() {
           <div className="grid h-full place-items-center px-6">
             {loading && !dialogOpen ? (
               <div className="w-full max-w-[520px]">
-                <IndexingProgress target={source} onCancel={() => setLoading(false)} />
+                <IndexingProgress target={source} message={progress ?? undefined} onCancel={() => setLoading(false)} />
               </div>
             ) : error ? (
               <div className="max-w-lg text-center font-mono text-sm text-red-400">Error: {error}</div>

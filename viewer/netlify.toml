@@ -1,0 +1,21 @@
+# Netlify deploy for the OpenVisio viewer (static Vite SPA + the transport
+# import function). Everything here runs on Netlify's free tier:
+#   • the viewer (static) — paste a GitHub URL → index in YOUR browser, no server
+#   • /api/import (function + Netlify Blobs) — receives graphs from
+#     `openvisio transport` and serves them back to /?g=<id>
+# No persistent server, no git, no source upload.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# SPA fallback: client routes (/?g=…) serve index.html. The /api/import function
+# is routed by its own `config.path`, which takes precedence over this rewrite.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

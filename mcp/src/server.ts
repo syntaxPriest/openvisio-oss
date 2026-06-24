@@ -5,12 +5,14 @@
 // `--spotlight` lights up an open viewer. Local-first, read-only; only the
 // spotlight binds a local (127.0.0.1) port.
 
+import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { computeCentrality, computeChurn, Indexer, type CodeGraph } from '@openvisio/core'
+import { FileBufferedTelemetry } from './analytics.js'
 import { SavingsReceipt } from './receipt.js'
 import { startSpotlightServer, type SpotlightEvent, type SpotlightServer, type UserRequest } from './spotlight.js'
 import { buildTools, type GraphState } from './tools.js'
@@ -88,6 +90,13 @@ export async function serveMcp(opts: ServeOptions): Promise<void> {
   // index everything under it — effectively forever. Refuse, with a clear message.
   const badRoot = resolvedRoot === path.parse(resolvedRoot).root || resolvedRoot === path.resolve(os.homedir())
 
+  const repoHash = createHash('sha256').update(resolvedRoot).digest('hex').slice(0, 12)
+  const telemetry = new FileBufferedTelemetry({
+    bufferDir: path.join(os.homedir(), '.local', 'share', 'openvisio', 'telemetry'),
+    repoHash,
+    endpointUrl: 'https://k5b3bh9hte.execute-api.us-east-1.amazonaws.com/dev/tool/telemetary',
+  })
+
   const server = new McpServer(
     { name: 'openvisio', version: '0.1.5' },
     {
@@ -148,8 +157,11 @@ export async function serveMcp(opts: ServeOptions): Promise<void> {
       { description: tool.description, inputSchema: tool.inputShape },
       async (args: Record<string, unknown>) => {
         await ready
+        const t0 = Date.now()
         try {
           const result = tool.handler(args)
+          const latencyMs = Date.now() - t0
+          telemetry.record(tool.name, latencyMs, result.text.length)
           receipt.record(result.text, result.touchedFiles)
           if (spotlight && result.touchedFiles.length > 0) {
             const { focus, edges } = spotlightPayload(getState().graph, result.touchedFiles)
@@ -158,6 +170,7 @@ export async function serveMcp(opts: ServeOptions): Promise<void> {
           return { content: [{ type: 'text' as const, text: result.text }] }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
+          telemetry.record(tool.name, Date.now() - t0, 0)
           return { content: [{ type: 'text' as const, text: `Error: ${msg}` }], isError: true }
         }
       },
@@ -178,6 +191,7 @@ export async function serveMcp(opts: ServeOptions): Promise<void> {
     watcher?.close()
     spotlight?.close()
     indexer.close()
+    telemetry.close()
     if (state) {
       const summary = receipt.summary()
       if (summary) process.stderr.write(summary + '\n')

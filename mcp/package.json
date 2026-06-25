@@ -1,6 +1,6 @@
 {
   "name": "openvisio",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Cut your AI coding agent's token usage. MCP server + CLI that turns any codebase into a deterministic code graph and serves Claude Code, Cursor, Codex & Windsurf a ranked, token-budgeted query surface — agents query structure (symbols, imports, call edges, path:line anchors) instead of crawling files. ~30x fewer exploration tokens. Local-first, read-only, no network, no embeddings.",
   "type": "module",
   "license": "MIT",

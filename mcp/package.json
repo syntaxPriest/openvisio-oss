@@ -1,7 +1,7 @@
 {
   "name": "openvisio",
-  "version": "0.2.1",
-  "description": "See any codebase as a graph. MCP server + CLI that serves coding agents (Claude Code, Codex, Cursor) a token-cheap, ranked, graph-native query surface over a local repo — agents query structure instead of crawling files. Local-first, read-only, no network.",
+  "version": "0.2.2",
+  "description": "Cut your AI coding agent's token usage. MCP server + CLI that turns any codebase into a deterministic code graph and serves Claude Code, Cursor, Codex & Windsurf a ranked, token-budgeted query surface — agents query structure (symbols, imports, call edges, path:line anchors) instead of crawling files. ~30x fewer exploration tokens. Local-first, read-only, no network, no embeddings.",
   "type": "module",
   "license": "MIT",
   "author": "OpenVisio contributors",
@@ -16,15 +16,29 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
+    "token-savings",
+    "reduce-tokens",
+    "context-engineering",
     "code-graph",
+    "code-knowledge-graph",
     "claude-code",
     "codex",
     "cursor",
+    "windsurf",
+    "cline",
+    "ai-coding-agent",
+    "ai-agents",
+    "ai-pair-programmer",
     "tree-sitter",
+    "static-analysis",
+    "dependency-graph",
+    "call-graph",
     "codebase-visualization",
+    "code-map",
     "developer-tools",
-    "ai-agents"
+    "local-first"
   ],
   "engines": {
     "node": ">=18.17"

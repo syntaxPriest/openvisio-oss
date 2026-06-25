@@ -1,37 +1,72 @@
-# OpenVisio — see any codebase as a graph
+# OpenVisio — cut your AI coding agent's token usage with a code graph
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/openvisio?logo=npm)](https://www.npmjs.com/package/openvisio)
+[![npm downloads](https://img.shields.io/npm/dm/openvisio?logo=npm&label=downloads)](https://www.npmjs.com/package/openvisio)
 [![GitHub stars](https://img.shields.io/github/stars/syntaxpriest/openvisio-oss?style=social)](https://github.com/syntaxpriest/openvisio-oss)
 [![CI](https://github.com/syntaxpriest/openvisio-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/syntaxpriest/openvisio-oss/actions/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)]()
 
-> One deterministic code graph, two faces: a **token-cheap MCP query surface** for
-> coding agents, and a **local-first visual map** for humans. No LLM in the engine,
-> no network, your code never leaves your machine.
+> **Stop paying for tokens your coding agent wastes reading files.** OpenVisio is
+> an [MCP server](https://modelcontextprotocol.io) that turns any repository into
+> a deterministic **code graph** and serves **Claude Code, Cursor, Codex, Windsurf,
+> Cline, and VS Code** a ranked, token-budgeted view — so the agent queries
+> *structure* (symbols, imports, call edges, `path:line` anchors) instead of
+> crawling and re-reading whole files. Same answers, a fraction of the context.
+> **Local-first, read-only, no LLM in the engine — your code never leaves your machine.**
 
 <p align="center">
-  <img src="docs/images/viewer.png" alt="OpenVisio viewer — the Atlas view of a large codebase, with files and symbols as a constellation linked by amber import and call edges" width="100%">
+  <img src="docs/images/viewer.png" alt="OpenVisio code graph viewer — the Atlas view of a large codebase, files and symbols as a constellation linked by amber import and call edges" width="100%">
   <br>
   <em>The viewer's <strong>Atlas</strong> view — every file and symbol as a constellation linked by imports, definitions, and calls (here: a 93K-file repo).</em>
 </p>
 
-OpenVisio parses any repository with tree-sitter into a symbol + import graph,
-ranks it with PageRank, and serves it two ways:
+---
+
+## Why OpenVisio? Token savings, measured
+
+AI coding agents explore a codebase the slow, expensive way: grep, open a file,
+read it whole, follow its imports, re-read on a miss — and re-process all of it on
+**every agent-loop turn**. On a real repo that's tens of thousands of tokens
+burned *before the agent writes a single line*, and you pay for those tokens on
+every request. OpenVisio replaces the crawl with **one ranked, `path:line`-anchored
+graph query**, so the agent reads only the few lines it actually needs.
+
+| To do this… | A no-graph agent | With OpenVisio | Leaner by |
+|---|---|---|---|
+| Build a whole-repo mental model | 92.1K tokens | 1.5K tokens | **~62×** |
+| Explore enough to start a task | ~78K tokens / task | ~2.4K tokens / task | **~30×** |
+
+> **Conservative projection** on a sample 65-file repo ([`bench/REPORT.frontend.md`](bench/REPORT.frontend.md)).
+> It *under*-counts the real win: it ignores re-reads, the per-turn tool-definition
+> tax, and Codex's ~3–5× agent-loop re-processing. Token savings concentrate in
+> large, structured repos. **Measure it on yours:** `npm run bench`.
+
+Fewer tokens per turn means **lower API bills, longer effective context windows,
+fewer "context full" compactions, and faster responses** — without giving up
+correctness, because every graph result carries a `path:line` anchor the agent can
+fall back to for a real read.
+
+---
+
+## What it is
+
+One deterministic code graph, two faces:
 
 - **For your agent** — an [MCP](https://modelcontextprotocol.io) server (`openvisio`
-  on npm) that gives Claude Code / Codex / Cursor a ranked, elided, token-budgeted
-  view so they query *structure* instead of crawling files.
+  on npm) that gives Claude Code / Cursor / Codex / Windsurf a ranked, elided,
+  token-budgeted view of the repo, so they query *structure* instead of crawling files.
 - **For you** — a local viewer that draws the same graph as an **Atlas** (a
   navigable structural map) and a **City** (a 3D treemap where size and weight
   encode complexity), so you can see the shape of an unfamiliar repo at a glance.
 
-The graph is **deterministic and LLM-free**: same repo bytes → same graph, same
-ids, every run.
+OpenVisio parses any repository with **tree-sitter** into a symbol + import graph and
+ranks it with **PageRank**. The graph is **deterministic and LLM-free**: same repo
+bytes → same graph, same ids, every run. No network, no embeddings, no vector DB.
 
 ---
 
-## Install the agent tool
+## Quick start (60 seconds)
 
 ```bash
 npm install -g openvisio
@@ -46,6 +81,36 @@ code graph instead of reading files blindly.
 
 Full CLI + tool reference: [`mcp/README.md`](mcp/README.md).
 
+### Works with your agent
+
+OpenVisio speaks the **Model Context Protocol** (the open standard from
+**Anthropic**), so it drops into any MCP-capable coding agent:
+
+| Agent / editor | Maker |
+|---|---|
+| **Claude Code** | Anthropic |
+| **Cursor** | Anysphere |
+| **Codex** | OpenAI |
+| **Windsurf** | Codeium |
+| **GitHub Copilot** (Agent Mode / VS Code MCP) | GitHub / Microsoft |
+| **Cline** | open source |
+| **Continue** | Continue.dev |
+| **Zed** | Zed Industries |
+| **JetBrains** IDEs (via MCP) | JetBrains |
+| any other MCP client | — |
+
+> Trademarks belong to their respective owners. OpenVisio is an independent,
+> MIT-licensed tool and is not affiliated with or endorsed by these companies — it
+> simply implements the open Model Context Protocol they support.
+
+### Why token cost matters whatever model you run
+
+Whether your agent calls **Anthropic Claude** (Opus, Sonnet, Haiku), **OpenAI**
+(GPT, Codex), **Google Gemini**, **Meta Llama**, **Mistral**, **DeepSeek**, or a
+local model, you pay — in dollars or latency — for every input token of context.
+OpenVisio cuts the biggest, most wasteful slice of that bill: the repeated
+file-crawling an agent does just to find where the relevant code lives.
+
 ### What the agent gets
 
 | tool | what it does |
@@ -58,11 +123,12 @@ Full CLI + tool reference: [`mcp/README.md`](mcp/README.md).
 | `get_hotspots` | churn × centrality refactor/risk candidates |
 
 Every line carries a `path:line` anchor, so agents read only the slice they need.
-See [`bench/`](bench/) for the token-savings methodology and an A/B protocol.
+See [`bench/`](bench/) for the token-savings methodology and an A/B protocol you can
+run on your own repo.
 
 ---
 
-## Run the viewer
+## Run the viewer — visualize any codebase
 
 Once `openvisio` is installed, `view` indexes a repo and opens the bundled
 **Atlas** and **City** views in your browser — zero install, served from
@@ -74,12 +140,12 @@ openvisio view ../other   # …or any other local repo
 ```
 
 The viewer ships in the `openvisio-viewer` package: the same React/Three.js
-Atlas + City views, as a self-contained static bundle. It opens on the **Atlas**
-by default; switch to **City** with the view toggle (top-right). Click **Index**
-to point it at any local repo — browse the filesystem in the built-in folder
-picker (git repos are flagged) or type a path — and a staged progress loader runs
-while the deterministic engine indexes. Click any node to focus it. Nothing
-leaves your machine.
+Atlas + City **codebase visualization**, as a self-contained static bundle. It opens
+on the **Atlas** by default; switch to the 3D **City** with the view toggle
+(top-right). Click **Index** to point it at any local repo — browse the filesystem
+in the built-in folder picker (git repos are flagged) or type a path — and a staged
+progress loader runs while the deterministic engine indexes. Click any node to focus
+it. Nothing leaves your machine.
 
 **Watch your agent think.** `view` defaults to the spotlight port (7077), so it
 doubles as the live-highlight hub: leave it running, point your agent at the repo
@@ -116,6 +182,44 @@ What happens:
 Your source never leaves your machine — only the symbol/import graph is sent. The
 destination defaults to `https://openvisio.io`; override it per-run with
 `--server` or globally with the `OPENVISIO_SERVER` environment variable.
+
+---
+
+## FAQ
+
+**How does OpenVisio reduce token usage in Claude Code / Cursor / Codex?**
+Instead of letting the agent grep and read whole files (and re-read them every
+turn), OpenVisio answers exploration queries from a precomputed code graph: a
+ranked skeleton, the relevant neighborhoods, and `path:line` anchors. The agent
+pulls a few hundred tokens of structure rather than tens of thousands of raw source —
+typically **~30× fewer exploration tokens**, and **~62×** to prime a whole-repo
+model (projected; see [bench](bench/)).
+
+**Does my code get uploaded anywhere?**
+No. The engine is **local-first and read-only** — indexing and parsing happen on
+your machine, and the MCP server never makes a network call. The optional
+`transport` command sends *only the computed graph JSON* (symbols + edges, no source)
+to a viewer you choose, and even that defaults to off for normal use.
+
+**How is this different from embeddings / RAG / vector search over my code?**
+No embeddings, no vector database, no LLM in the indexer. OpenVisio is a
+**deterministic static analysis** graph (tree-sitter parse + import resolution +
+PageRank): same bytes → same graph, every run. It returns exact `path:line`
+anchors, not fuzzy nearest-neighbor chunks — so there's nothing to hallucinate and
+nothing to re-embed when the code changes.
+
+**Which languages are supported?**
+40+ via tree-sitter — TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, C#,
+Kotlin, Ruby, PHP, Swift, and more (full table below). Every other file still
+becomes a graph node, so nothing in the repo is invisible.
+
+**Does it work on large monorepos?**
+Yes — that's where it pays off most. The token savings grow with repo size, and the
+viewer has rendered 90K+ file graphs. Small/greenfield repos see smaller wins
+(the explored set is already the whole repo).
+
+**Is it free and open source?**
+Yes — **MIT licensed**. `openvisio` and `openvisio-viewer` are on npm.
 
 ---
 
@@ -163,8 +267,8 @@ parsed symbols, so nothing in the repo is invisible.
 | TOML               | `.toml`                             |
 | Embedded Template  | `.erb`, `.ejs`                      |
 | SystemRDL          | `.rdl`                              |
-| QL                 | `.ql`                               |
-| Emacs Lisp         | `.el`                               |
+| QL                 | `.ql`                              |
+| Emacs Lisp         | `.el`                              |
 
 > Swift's grammar is heavy enough to crash V8's WASM compiler on some machines,
 > so it's off by default — enable it with `OPENVISIO_ENABLE_GRAMMARS=swift`.
@@ -195,9 +299,22 @@ npm run typecheck
 npm run smoke        # end-to-end CLI smoke test
 ```
 
-The viewer (`ui/`) installs independently — see [Run the viewer](#run-the-viewer).
+The viewer (`ui/`) installs independently — see [Run the viewer](#run-the-viewer--visualize-any-codebase).
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Keywords
+
+MCP server · Model Context Protocol · Anthropic Claude · Claude Code · Cursor
+(Anysphere) · OpenAI Codex · GPT · Google Gemini · GitHub Copilot · Microsoft
+VS Code · Windsurf · Codeium · Cline · Continue · Zed · JetBrains · Meta Llama ·
+Mistral · DeepSeek · reduce token usage · save LLM tokens · lower API cost ·
+token-efficient context · context engineering · code graph · code knowledge graph ·
+codebase visualization · 3D code map · dependency graph · call graph · import graph ·
+tree-sitter · static analysis · AI coding agent · AI pair programmer · local-first ·
+read-only · privacy-first code tooling.
 
 ---
 

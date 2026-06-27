@@ -1,6 +1,6 @@
 {
   "name": "@openvisio/core",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Deterministic, local-first code-graph engine for OpenVisio: tree-sitter symbol/import extraction, PageRank ranking, token-budgeted skeletons and slices. No LLM, no network.",
   "type": "module",
   "license": "MIT",

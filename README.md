@@ -6,6 +6,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/syntaxpriest/openvisio-oss?style=social)](https://github.com/syntaxpriest/openvisio-oss)
 [![CI](https://github.com/syntaxpriest/openvisio-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/syntaxpriest/openvisio-oss/actions/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)]()
+[![Website](https://img.shields.io/badge/website-openvisio.io-amber?logo=googlechrome&logoColor=white)](https://openvisio.io)
+
+**Website: [openvisio.io](https://openvisio.io)** · [npm](https://www.npmjs.com/package/openvisio) · [docs](https://openvisio.io)
 
 > **Stop paying for tokens your coding agent wastes reading files.** OpenVisio is
 > an [MCP server](https://modelcontextprotocol.io) that turns any repository into

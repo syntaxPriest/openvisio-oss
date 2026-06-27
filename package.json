@@ -4,7 +4,7 @@
   "private": true,
   "description": "OpenVisio monorepo. The deterministic code-graph core, the standalone MCP CLI published to npm as `openvisio`, and a local-first viewer (Atlas + City). See any codebase as a graph; give coding agents a token-cheap, graph-native query surface.",
   "license": "MIT",
-  "homepage": "https://github.com/syntaxpriest/openvisio-oss#readme",
+  "homepage": "https://openvisio.io",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/syntaxpriest/openvisio-oss.git"

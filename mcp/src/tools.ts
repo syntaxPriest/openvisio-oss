@@ -17,12 +17,17 @@ import {
   dependenciesOf,
   dependentsOf,
   findSymbols,
+  rankSymbols,
   resolveContext,
   resolveFileTarget,
+  searchContent,
   sliceSymbolSource,
   TokenBudget,
+  traceCalls,
   type Centrality,
   type CodeGraph,
+  type RankedSymbolHit,
+  type SymbolHit,
 } from '@openvisio/core'
 import type { UserRequest } from './spotlight.js'
 
@@ -116,20 +121,27 @@ function findSymbolTool(getState: GetState): ToolDef {
   return {
     name: 'find_symbol',
     description:
-      'Locate a function/class/type by name or pattern: returns signature, exact path:line anchor, and the (elided) definition body — no whole-file reads.',
+      'Locate a function/class/type by exact name, regex pattern, OR natural-language query (BM25 — ranks by relevance, splits camelCase, so "update cloud client" finds updateCloudClient without knowing the exact name). Returns signature, exact path:line anchor, and the (elided) definition body — no whole-file reads. Use `query` when you know WHAT the code does but not its name.',
     inputShape: {
       name: z.string().optional().describe('Exact symbol name.'),
       pattern: z.string().optional().describe('Case-insensitive regex over symbol names.'),
+      query: z
+        .string()
+        .optional()
+        .describe('Natural-language description — BM25-ranked discovery when you do not know the exact name.'),
       budget_tokens: budgetArg(800),
     },
     handler: (args) => {
       const { graph, centrality } = getState()
       const name = args.name as string | undefined
       const pattern = args.pattern as string | undefined
-      if (!name && !pattern) return { text: 'Provide `name` or `pattern`.', touchedFiles: [] }
+      const query = args.query as string | undefined
+      if (!name && !pattern && !query) return { text: 'Provide `name`, `pattern`, or `query`.', touchedFiles: [] }
       const budget = new TokenBudget((args.budget_tokens as number | undefined) ?? 800)
-      const hits = findSymbols(graph, { name, pattern, centrality })
-      if (hits.length === 0) return { text: `No symbols match ${name ?? pattern}.`, touchedFiles: [] }
+      const hits: (SymbolHit | RankedSymbolHit)[] = query
+        ? rankSymbols(graph, query, { centrality })
+        : findSymbols(graph, { name, pattern, centrality })
+      if (hits.length === 0) return { text: `No symbols match ${name ?? pattern ?? query}.`, touchedFiles: [] }
 
       const blocks: string[] = []
       const touched = new Set<number>()
@@ -148,6 +160,76 @@ function findSymbolTool(getState: GetState): ToolDef {
       const omitted = hits.length - shown
       const footer = omitted > 0 ? `\n\n… ${omitted} more match(es) omitted (narrow the query).` : ''
       return { text: blocks.join('\n\n') + footer, touchedFiles: [...touched] }
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// search_code — the grep replacement. Content search over the indexed file set
+// with ranked, anchored, symbol-annotated hits. Use INSTEAD of grep/rg/find.
+// ---------------------------------------------------------------------------
+function searchCodeTool(getState: GetState): ToolDef {
+  return {
+    name: 'search_code',
+    description:
+      'Full-text search over the indexed repo — the grep/ripgrep replacement. Find any literal string, regex, TODO, error message, or config key. Returns matches ranked by file importance, each with its enclosing symbol and an exact path:line anchor. Use this instead of grep/rg/find/Grep.',
+    inputShape: {
+      query: z.string().describe('Literal text to find (or a regex when regex=true).'),
+      regex: z.boolean().optional().describe('Treat query as a JS regular expression (default false).'),
+      case_sensitive: z.boolean().optional().describe('Case-sensitive match (default false).'),
+      path_filter: z
+        .string()
+        .optional()
+        .describe('Restrict to paths matching a glob (`*.ts`, `src/api/*`) or substring (`components/`).'),
+      budget_tokens: budgetArg(1500),
+    },
+    handler: (args) => {
+      const { graph, centrality } = getState()
+      const query = args.query as string
+      if (!query) return { text: 'Provide a non-empty `query`.', touchedFiles: [] }
+      const r = searchContent(graph, {
+        query,
+        regex: (args.regex as boolean | undefined) ?? false,
+        caseSensitive: (args.case_sensitive as boolean | undefined) ?? false,
+        pathFilter: args.path_filter as string | undefined,
+        budgetTokens: (args.budget_tokens as number | undefined) ?? 1500,
+        centrality,
+      })
+      return { text: r.text, touchedFiles: r.fileIds }
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// trace_calls — walk the CALL graph ("who calls X" / "what does X call"). Uses
+// the call edges the index already builds. Replaces grepping for call sites.
+// ---------------------------------------------------------------------------
+function traceCallsTool(getState: GetState): ToolDef {
+  return {
+    name: 'trace_calls',
+    description:
+      'Trace the call graph from a function/method: callers (who calls it — impact) or callees (what it calls). Multi-hop, ranked by importance, rendered as an anchored tree. Use this instead of grepping for call sites or "who uses this".',
+    inputShape: {
+      symbol_name: z.string().describe('The function/method name to trace from.'),
+      direction: z
+        .enum(['callers', 'callees', 'both'])
+        .optional()
+        .describe('callers = who calls it (default), callees = what it calls, both.'),
+      depth: z.number().int().min(1).max(6).optional().describe('Call hops to follow (default 3).'),
+      budget_tokens: budgetArg(1200),
+    },
+    handler: (args) => {
+      const { graph, centrality } = getState()
+      const symbolName = args.symbol_name as string
+      if (!symbolName) return { text: 'Provide a `symbol_name`.', touchedFiles: [] }
+      const r = traceCalls(graph, {
+        symbolName,
+        direction: (args.direction as 'callers' | 'callees' | 'both' | undefined) ?? 'callers',
+        depth: args.depth as number | undefined,
+        budgetTokens: (args.budget_tokens as number | undefined) ?? 1200,
+        centrality,
+      })
+      return { text: r.text, touchedFiles: r.fileIds }
     },
   }
 }
@@ -400,6 +482,8 @@ export function buildTools(getState: GetState, deps?: ToolDeps): ToolDef[] {
     resolveContextTool(getState),
     skeletonTool(getState),
     findSymbolTool(getState),
+    searchCodeTool(getState),
+    traceCallsTool(getState),
     neighborhoodTool(getState),
     dependentsTool(getState),
     hotspotsTool(getState),

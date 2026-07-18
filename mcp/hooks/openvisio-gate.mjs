@@ -9,13 +9,17 @@
 //     again on the next task.
 //   • Write commands also delete .openvisio/graph.json so the viewer
 //     re-indexes on the next request.
-//   • Read/Grep/Glob for non-code files (configs, docs, lockfiles) are always
-//     allowed without priming.
-//   • All other code-discovery tools (Read/Grep/Glob on code, grep/find/etc.
-//     in Bash) are DENIED until an openvisio tool primes the session.
+//   • Read is ALWAYS allowed — the goal is to reduce blind whole-file reads, not
+//     to block reading. Agents still read the anchored slices the tools hand
+//     them; we just don't gate Read itself.
+//   • Grep/Glob for non-code files (configs, docs, lockfiles) are always allowed
+//     without priming.
+//   • The SEARCH tools (Grep/Glob on code, grep/find/etc. in Bash) are DENIED
+//     until an openvisio tool primes the session — steering discovery to
+//     search_code / find_symbol / trace_calls instead of blind text sweeps.
 //
 // The first openvisio tool call in each task "primes" the session; after that
-// all tools pass (anchored reads, git status, etc. all flow freely).
+// all tools pass (search, git status, etc. all flow freely).
 //
 // Install in the repo you point the agent at — .claude/settings.json:
 //   {
@@ -159,9 +163,10 @@ if (toolName === 'Bash') {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason:
-            'openvisio-gate: call the openvisio MCP first. Before searching code, ' +
-            'call `resolve_context` with your task (then find_symbol / get_neighborhood ' +
-            '/ get_dependents) to get path:line anchors. Then retry this action.',
+            'openvisio-gate: use the openvisio MCP instead of grep/rg/find. For text ' +
+            'search call `search_code` (the grep replacement — ranked, anchored, ' +
+            'symbol-annotated hits). To orient first, call `resolve_context`, then ' +
+            'find_symbol / get_neighborhood / get_dependents for path:line anchors.',
         },
       }),
     )
@@ -177,20 +182,22 @@ if (toolName === 'Bash') {
 if (existsSync(marker)) process.exit(0)
 
 // ---------------------------------------------------------------------------
-// Rule 4: Ungated tools (non-Bash, non-Read/Grep/Glob) pass through.
+// Rule 4: Read always passes, and any other ungated tool (non-Bash, non-Grep/
+// Glob) passes through. Reading is never blocked — we only steer SEARCH.
 // ---------------------------------------------------------------------------
 
-const GATED_TOOLS = new Set(['Read', 'Grep', 'Glob'])
+const GATED_TOOLS = new Set(['Grep', 'Glob'])
 if (!GATED_TOOLS.has(toolName)) process.exit(0)
 
 // ---------------------------------------------------------------------------
-// Rule 5: Non-code file reads are always allowed.
+// Rule 5: Grep/Glob over non-code files (configs, docs, lockfiles) are allowed.
 // ---------------------------------------------------------------------------
 
 if (isNonCodeRead(toolName, toolInput)) process.exit(0)
 
 // ---------------------------------------------------------------------------
-// Rule 6: Deny — call openvisio first.
+// Rule 6: Deny the SEARCH (Grep/Glob over code) — call openvisio first.
+// (Read is never gated; this only catches blind text/glob sweeps.)
 // ---------------------------------------------------------------------------
 
 process.stdout.write(
@@ -199,10 +206,10 @@ process.stdout.write(
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
       permissionDecisionReason:
-        'openvisio-gate: call the openvisio MCP first. Before reading, grepping, or ' +
-        'globbing any file in this repo, call `resolve_context` with your task (then ' +
-        'find_symbol / get_neighborhood / get_dependents) to get path:line anchors. ' +
-        'Then retry this action.',
+        'openvisio-gate: use the openvisio MCP for code search instead of Grep/Glob. ' +
+        'For text search call `search_code` (the grep replacement); for a symbol by ' +
+        'name/concept use `find_symbol`; for callers use `trace_calls`. To orient, call ' +
+        '`resolve_context` first. Reading files is always allowed. Then retry this action.',
     },
   }),
 )

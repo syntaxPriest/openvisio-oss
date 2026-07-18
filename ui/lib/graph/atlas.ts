@@ -1,15 +1,20 @@
 // Assemble the "Atlas": the whole codebase as one interconnected node-link
-// graph — files + symbols (functions/classes/types/interfaces/consts) wired by
-// `defines` (file → symbol) and `imports` (file → file). Node POSITIONS are the
-// engine's deterministic ring-by-folder + Barnes-Hut layout (graph.layout); the
-// viewer renders them directly — no client-side force simulation. Heuristic
-// `calls` (function → function) land here once the core engine extracts them.
+// graph — files + symbols (functions/methods/classes/types/interfaces/consts)
+// wired by `defines` (file → symbol), `imports` (file → file), `calls`
+// (function → function) and `extends`/`implements` (class → class/interface).
+//
+// Layout is a SOLID BALL: every file gets an even direction on the unit sphere
+// (Fibonacci lattice) and a radial distance set by how connected it is — highly
+// connected "hub" files sink toward the core, leaf files float to the outer
+// shell. Node SIZE is exaggerated by degree, so the load-bearing nodes read as
+// big bright cores. Deterministic — same graph, same ball (no Math.random, no
+// client-side force simulation).
 
 import type { GraphResponse } from '@/lib/api/types'
 import { shortName } from '@/components/graph/encoding'
 
-export type AtlasNodeType = 'file' | 'function' | 'class' | 'interface' | 'type' | 'const'
-export type AtlasLinkKind = 'imports' | 'defines' | 'calls'
+export type AtlasNodeType = 'file' | 'function' | 'method' | 'class' | 'interface' | 'type' | 'const'
+export type AtlasLinkKind = 'imports' | 'defines' | 'calls' | 'extends' | 'implements'
 
 export interface AtlasNode {
   id: string
@@ -17,13 +22,12 @@ export interface AtlasNode {
   type: AtlasNodeType
   /** The owning file id (for click-to-focus + filtering). */
   fileId: number
-  /** Render radius (files scale with LOC; symbols are small). */
+  /** Render radius — exaggerated by degree for files, by kind for symbols. */
   radius: number
   /** Precomputed world position — the viewer renders this, no client sim. */
   x: number
   y: number
-  /** Depth — the atlas is a true 3D galaxy: files dome up from the centre and
-   *  symbols orbit their file on a 3D shell. */
+  /** Depth — the atlas is a true 3D ball, not a flat disc. */
   z: number
 }
 
@@ -48,6 +52,7 @@ export interface AtlasData {
 export const ATLAS_NODE_COLOR: Record<AtlasNodeType, string> = {
   file: '#3b82f6', // blue
   function: '#22d3ee', // cyan
+  method: '#2dd4bf', // teal
   class: '#a855f7', // purple
   interface: '#c084fc', // violet
   type: '#94a3b8', // slate
@@ -58,6 +63,8 @@ export const ATLAS_LINK_COLOR: Record<AtlasLinkKind, string> = {
   imports: '#3b82f6',
   defines: '#475569',
   calls: '#f59e0b', // amber (matches the spotlight convention)
+  extends: '#ec4899', // pink — inheritance
+  implements: '#34d399', // green — interface implementation
 }
 
 export function buildAtlas(graph: GraphResponse): AtlasData {
@@ -66,58 +73,48 @@ export function buildAtlas(graph: GraphResponse): AtlasData {
   const nodeCounts: Record<AtlasNodeType, number> = {
     file: 0,
     function: 0,
+    method: 0,
     class: 0,
     interface: 0,
     type: 0,
     const: 0,
   }
-  const linkCounts: Record<AtlasLinkKind, number> = { imports: 0, defines: 0, calls: 0 }
+  const linkCounts: Record<AtlasLinkKind, number> = {
+    imports: 0,
+    defines: 0,
+    calls: 0,
+    extends: 0,
+    implements: 0,
+  }
 
   const fileNodeId = (id: number) => `f${id}`
   const symNodeId = (id: number) => `s${id}`
 
   // Every node shows up — no capping. The viewer draws the whole codebase with
-  // WebGL instancing (one Points draw call + one LineSegments draw call), so even
-  // large repos render as one galaxy.
+  // WebGL instancing (one Points draw call + one LineSegments draw call).
   const files = graph.files
   const fileIds = new Set(files.map((f) => f.id))
   const symbols = graph.symbols.filter((s) => fileIds.has(s.file_id))
 
-  // File positions come from the engine's deterministic layout (ring-by-folder +
-  // Barnes-Hut). Fall back to a golden-angle spiral if no layout was supplied.
-  const layoutPos = new Map<number, { x: number; y: number }>()
-  for (const ln of graph.layout?.nodes ?? []) layoutPos.set(ln.id, { x: ln.x, y: ln.y })
-  const filePos = new Map<number, { x: number; y: number }>()
-  files.forEach((f, i) => {
-    const p = layoutPos.get(f.id)
-    if (p) filePos.set(f.id, p)
-    else {
-      const a = i * 2.399963 // golden angle
-      const r = 40 * Math.sqrt(i + 1)
-      filePos.set(f.id, { x: Math.cos(a) * r, y: Math.sin(a) * r })
+  // ---- Degree: how connected each file is. Drives BOTH node size and radial
+  // depth in the ball (hubs are big and pulled to the core). ----
+  const fileDegree = new Map<number, number>()
+  const bumpDeg = (id: number, n = 1) => {
+    if (fileIds.has(id)) fileDegree.set(id, (fileDegree.get(id) ?? 0) + n)
+  }
+  for (const e of graph.edges) {
+    if (e.edge_kind === 'import' && e.source_kind === 'file' && e.target_kind === 'file') {
+      bumpDeg(e.source_id)
+      bumpDeg(e.target_id)
     }
-  })
+  }
+  // The symbols a file defines add a little mass — a fat file is a hub too.
+  for (const s of symbols) bumpDeg(s.file_id, 0.2)
+  let maxDeg = 1
+  for (const d of fileDegree.values()) if (d > maxDeg) maxDeg = d
 
-  // ---- Lift the flat layout into 3D. Files dome up from the centroid (central,
-  // load-bearing files rise toward the viewer) with a little deterministic jitter
-  // for volume; symbols then orbit their file on a 3D shell. Deterministic — same
-  // graph, same galaxy. ----
-  let cx = 0
-  let cy = 0
-  for (const p of filePos.values()) {
-    cx += p.x
-    cy += p.y
-  }
-  const nf = filePos.size || 1
-  cx /= nf
-  cy /= nf
-  let maxR = 1
-  for (const p of filePos.values()) {
-    const d = Math.hypot(p.x - cx, p.y - cy)
-    if (d > maxR) maxR = d
-  }
   // Deterministic hash → [-1, 1] from an integer id (no Math.random, so reloads
-  // don't reshuffle the galaxy).
+  // don't reshuffle the ball).
   const jitter = (n: number) => {
     let h = (n * 2654435761) >>> 0
     h ^= h >>> 15
@@ -125,54 +122,76 @@ export function buildAtlas(graph: GraphResponse): AtlasData {
     h ^= h >>> 13
     return ((h >>> 0) / 4294967295) * 2 - 1
   }
-  const Z_BULGE = maxR * 0.7
-  const fileZ = new Map<number, number>()
-  for (const f of files) {
-    const p = filePos.get(f.id)!
-    const rr = Math.hypot(p.x - cx, p.y - cy) / maxR
-    fileZ.set(f.id, Z_BULGE * (1 - rr * rr) + jitter(f.id) * maxR * 0.14)
-  }
+
+  // ---- Solid ball. Fibonacci direction on the unit sphere (even angular
+  // coverage) × a radial distance driven by connectedness: hubs to the core,
+  // leaves to the shell. ----
+  const RADIUS = Math.max(180, 30 * Math.sqrt(Math.max(1, files.length)))
+  const N = files.length
+  const filePos = new Map<number, { x: number; y: number; z: number }>()
+  files.forEach((f, i) => {
+    const deg = fileDegree.get(f.id) ?? 0
+    const t = Math.min(1, deg / maxDeg) // 0 (leaf) .. 1 (hub)
+    const yy = N > 1 ? 1 - (i / (N - 1)) * 2 : 0 // 1 .. -1
+    const ring = Math.sqrt(Math.max(0, 1 - yy * yy))
+    const theta = i * 2.399963 // golden angle
+    const ux = Math.cos(theta) * ring
+    const uz = Math.sin(theta) * ring
+    // Hubs (t→1) pull to the core; leaves (t→0) push to the shell. Jitter adds
+    // volume so shells don't look like hard rings.
+    const rr = RADIUS * (0.16 + 0.84 * Math.pow(1 - t, 1.4)) * (0.92 + 0.08 * jitter(f.id))
+    filePos.set(f.id, { x: ux * rr, y: yy * rr, z: uz * rr })
+  })
 
   for (const f of files) {
     const p = filePos.get(f.id)!
+    const deg = fileDegree.get(f.id) ?? 0
     nodes.push({
       id: fileNodeId(f.id),
       label: shortName(f.path),
       type: 'file',
       fileId: f.id,
-      radius: Math.max(3, Math.min(9, 3 + Math.sqrt(f.loc) / 6)),
+      // Exaggerated by connections: leaves ~5, hubs large (shader caps on-screen).
+      radius: 5 + Math.sqrt(deg) * 4 + Math.min(6, Math.sqrt(f.loc) / 6),
       x: p.x,
       y: p.y,
-      z: fileZ.get(f.id) ?? 0,
+      z: p.z,
     })
     nodeCounts.file++
   }
 
-  // Symbols orbit their owning file on a 3D shell (golden-angle azimuth × evenly
-  // sliced inclination) — deterministic, and tight enough to stay near the file.
+  // Symbols orbit their owning file on a small 3D shell (golden-angle direction),
+  // sized by kind so classes/interfaces read larger than their members.
+  const SYM_RADIUS: Record<AtlasNodeType, number> = {
+    file: 5,
+    class: 4.2,
+    interface: 3.8,
+    type: 2.8,
+    function: 2.8,
+    method: 2.3,
+    const: 2.1,
+  }
   const symOrbit = new Map<number, number>()
   const symIds = new Set<number>()
   for (const s of symbols) {
-    if (!fileIds.has(s.file_id)) continue
     const type = s.kind as AtlasNodeType
     if (!(type in nodeCounts)) continue
     const fp = filePos.get(s.file_id)!
-    const fz = fileZ.get(s.file_id) ?? 0
     const k = symOrbit.get(s.file_id) ?? 0
     symOrbit.set(s.file_id, k + 1)
-    const ang = k * 2.399963 // golden angle azimuth
-    const zoff = ((k % 16) / 15) * 2 - 1 // -1..1 inclination band
-    const ring = Math.sqrt(Math.max(0, 1 - zoff * zoff))
-    const orad = 7 + k * 1.1
+    const yy = ((k % 16) / 15) * 2 - 1 // -1..1 inclination band
+    const ring = Math.sqrt(Math.max(0, 1 - yy * yy))
+    const ang = k * 2.399963 // golden-angle azimuth
+    const orad = 9 + k * 1.2
     nodes.push({
       id: symNodeId(s.id),
       label: s.name,
       type,
       fileId: s.file_id,
-      radius: 2.4,
+      radius: SYM_RADIUS[type] ?? 2.4,
       x: fp.x + Math.cos(ang) * ring * orad,
-      y: fp.y + Math.sin(ang) * ring * orad,
-      z: fz + zoff * orad,
+      y: fp.y + yy * orad,
+      z: fp.z + Math.sin(ang) * ring * orad,
     })
     symIds.add(s.id)
     nodeCounts[type]++
@@ -181,7 +200,7 @@ export function buildAtlas(graph: GraphResponse): AtlasData {
     linkCounts.defines++
   }
 
-  // Nothing is dropped any more.
+  // Nothing is dropped.
   const truncated = false
 
   for (const e of graph.edges) {
@@ -189,12 +208,20 @@ export function buildAtlas(graph: GraphResponse): AtlasData {
       if (!fileIds.has(e.source_id) || !fileIds.has(e.target_id)) continue
       links.push({ source: fileNodeId(e.source_id), target: fileNodeId(e.target_id), kind: 'imports' })
       linkCounts.imports++
-    } else if (e.edge_kind === 'call' && e.source_kind === 'symbol' && e.target_kind === 'symbol') {
-      // Only if both symbol nodes are present (they may be dropped under the
-      // exported-only cap on big repos).
+    } else if (e.source_kind === 'symbol' && e.target_kind === 'symbol') {
+      // calls / extends / implements — only if both symbol nodes are present.
       if (!symIds.has(e.source_id) || !symIds.has(e.target_id)) continue
-      links.push({ source: symNodeId(e.source_id), target: symNodeId(e.target_id), kind: 'calls' })
-      linkCounts.calls++
+      const kind: AtlasLinkKind | null =
+        e.edge_kind === 'call'
+          ? 'calls'
+          : e.edge_kind === 'extends'
+            ? 'extends'
+            : e.edge_kind === 'implements'
+              ? 'implements'
+              : null
+      if (!kind) continue
+      links.push({ source: symNodeId(e.source_id), target: symNodeId(e.target_id), kind })
+      linkCounts[kind]++
     }
   }
 

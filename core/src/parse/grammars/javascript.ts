@@ -9,6 +9,7 @@ const JS_SYMBOLS = `
 (class_declaration name: (identifier) @name) @def.class
 (lexical_declaration (variable_declarator name: (identifier) @name)) @def.const
 (variable_declaration (variable_declarator name: (identifier) @name)) @def.const
+(method_definition name: (property_identifier) @name) @def.method
 `
 const JS_IMPORTS = `
 (import_statement source: (string) @source)
@@ -19,6 +20,12 @@ const JS_CALLS = `
 (call_expression function: (identifier) @callee)
 (call_expression function: (member_expression property: (property_identifier) @callee))
 (new_expression constructor: (identifier) @callee)
+`
+// JS class heritage is `extends <expression>` directly (no extends_clause node,
+// no interfaces).
+const JS_INHERIT = `
+(class_heritage (identifier) @extends)
+(class_heritage (member_expression property: (property_identifier) @extends))
 `
 
 function exported(def: import('web-tree-sitter').Node): boolean {
@@ -36,6 +43,22 @@ function topLevel(def: import('web-tree-sitter').Node): boolean {
   if (p.type === 'program') return true
   if (p.type === 'export_statement' && p.parent?.type === 'program') return true
   return false
+}
+
+function enclosingClass(def: import('web-tree-sitter').Node): import('web-tree-sitter').Node | null {
+  let n: import('web-tree-sitter').Node | null = def.parent
+  for (let i = 0; i < 4 && n; i++) {
+    if (n.type === 'class_declaration' || n.type === 'class') return n
+    n = n.parent
+  }
+  return null
+}
+
+/** Keep a method only when its owning class is kept (top-level or exported). */
+function keptMember(def: import('web-tree-sitter').Node): boolean {
+  const cls = enclosingClass(def)
+  if (!cls) return false
+  return topLevel(cls) || exported(cls)
 }
 
 // Same TS/JS import resolution as typescript
@@ -99,8 +122,16 @@ export const javascript: GrammarConfig = {
   symbolQuery: JS_SYMBOLS,
   importQuery: JS_IMPORTS,
   callQuery: JS_CALLS,
-  keep: (def) => topLevel(def) || exported(def),
-  exported: (def) => exported(def),
+  inheritQuery: JS_INHERIT,
+  keep: (def) =>
+    def.type === 'method_definition' ? keptMember(def) : topLevel(def) || exported(def),
+  exported: (def) => {
+    if (def.type === 'method_definition') {
+      const cls = enclosingClass(def)
+      return cls ? exported(cls) : false
+    }
+    return exported(def)
+  },
   importSpecifier: (n) => {
     const s = n.text
     if (s.length >= 2) {

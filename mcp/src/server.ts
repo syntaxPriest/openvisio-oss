@@ -110,18 +110,21 @@ export async function serveMcp(opts: ServeOptions): Promise<void> {
         'returns a task-ranked skeleton plus the neighborhoods of the most relevant ' +
         'files, every line carrying a `path:line` anchor.\n' +
         'Step 2 — drill in with the right tool instead of opening files:\n' +
-        '  • find a function/class/type by name or pattern → `find_symbol`\n' +
-        '  • who imports / what this imports (impact) → `get_dependents`\n' +
+        '  • find a symbol by name, regex, OR natural-language description → `find_symbol`\n' +
+        '  • any literal string / regex / TODO / error message / config key → `search_code`\n' +
+        '  • who CALLS a function / what it calls (call chain, impact) → `trace_calls`\n' +
+        '  • who imports / what this imports (file-level impact) → `get_dependents`\n' +
         '  • local import subgraph around a file/symbol → `get_neighborhood`\n' +
         '  • churn × centrality refactor/risk candidates → `get_hotspots`\n' +
         '  • the whole ranked repo map → `get_repo_skeleton`\n' +
         '\n' +
         'Only after these tools have given you the `path:line` anchors may you read ' +
         'source — and then read just the anchored slice, never the whole file. ' +
-        'Do NOT reach for grep/glob/find/cat to discover code structure; that wastes ' +
-        'tokens and bypasses the graph. The ONLY exceptions are non-code assets the ' +
-        'graph does not model: config, docs/markdown, lockfiles, and binary/data files. ' +
-        'When in doubt, call `resolve_context` first.',
+        'NEVER reach for grep/rg/ripgrep/glob/find/cat to discover code — `search_code` ' +
+        'is the grep replacement: it searches the same indexed files and returns ranked, ' +
+        'symbol-annotated, anchored hits for a fraction of the tokens. The ONLY exceptions ' +
+        'are non-code assets the graph does not model: config, docs/markdown, lockfiles, ' +
+        'and binary/data files. When in doubt, call `resolve_context` first.',
     },
   )
 

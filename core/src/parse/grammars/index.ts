@@ -41,6 +41,13 @@ export interface GrammarConfig {
   symbolQuery: string
   importQuery: string | null
   callQuery?: string
+  /**
+   * Optional query capturing inheritance. Each match should yield a
+   * `@extends` and/or `@implements` capture naming a supertype; the enclosing
+   * class/interface (found by line) is the subtype. Resolved to symbol edges in
+   * build, mirroring call resolution.
+   */
+  inheritQuery?: string
   importSpecifier: (node: Node) => string
   keep: (def: Node, name: string) => boolean
   exported: (def: Node, name: string) => boolean

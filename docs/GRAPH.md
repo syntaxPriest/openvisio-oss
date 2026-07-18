@@ -190,9 +190,11 @@ additive, and bound to `127.0.0.1` only.
 `mcp/hooks/` ships two optional Claude Code hooks — wire them into a repo's
 `.claude/settings.json`:
 
-- **`openvisio-gate.mjs`** (`PreToolUse`) — blocks `Read`/`Grep`/`Glob`/`Bash`
-  until an `openvisio` tool has primed the session, so the agent consults the
-  graph *first*. After priming, everything passes.
+- **`openvisio-gate.mjs`** (`PreToolUse`) — gates code *search* (`Grep`/`Glob`
+  and grep/find-style `Bash`) until an `openvisio` tool has primed the session,
+  steering discovery to `search_code`/`find_symbol`/`trace_calls` first. `Read`
+  is never blocked (the goal is fewer blind whole-file reads, not no reading),
+  and non-code Grep/Glob always pass. After priming, everything passes.
 - **`openvisio-instruct.mjs`** (`UserPromptSubmit`) — pulls a pending instruction
   from the spotlight server and injects it as context on the next prompt, so a
   question typed in the viewer reaches the agent with no copy-paste. Fails open

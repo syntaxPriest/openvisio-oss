@@ -27,14 +27,14 @@ function signatureOf(def: Node): string {
  *  (default no limit); on timeout the file silently yields an empty result. */
 export async function parseFile(relPath: string, content: string, parseTimeoutMs?: number): Promise<ParseResult> {
   const grammar = grammarForFile(relPath)
-  if (!grammar) return { symbols: [], imports: [], calls: [] }
+  if (!grammar) return { symbols: [], imports: [], calls: [], inherits: [] }
   const config: GrammarConfig | undefined = GRAMMARS[grammar]
-  if (!config) return { symbols: [], imports: [], calls: [] }
+  if (!config) return { symbols: [], imports: [], calls: [], inherits: [] }
   let root
   try {
     root = await parseSource(grammar, content, parseTimeoutMs)
   } catch {
-    return { symbols: [], imports: [], calls: [] }
+    return { symbols: [], imports: [], calls: [], inherits: [] }
   }
   const queries = getOrCompileQueries(grammar, config)
 
@@ -65,6 +65,11 @@ export async function parseFile(relPath: string, content: string, parseTimeoutMs
         signature: signatureOf(defNode),
         startLine: defNode.startPosition.row + 1,
         endLine: defNode.endPosition.row + 1,
+        // web-tree-sitter node indices are UTF-16 code units into the source
+        // string (verified: source.slice(startIndex, endIndex) === node.text),
+        // which is exactly what VS Code Positions consume. Store as-is.
+        nameRange: [nameNode.startIndex, nameNode.endIndex],
+        fullRange: [defNode.startIndex, defNode.endIndex],
         exported: config.exported(defNode, name),
       })
     }
@@ -105,5 +110,22 @@ export async function parseFile(relPath: string, content: string, parseTimeoutMs
     }
   } catch (e) { console.error(`[parse] call query failed for ${relPath}: ${e}`) }
 
-  return { symbols, imports, calls }
+  let inherits: ParseResult['inherits'] = []
+  try {
+    if (queries.inheritQuery) {
+      const extracted: ParseResult['inherits'] = []
+      for (const match of queries.inheritQuery.matches(root)) {
+        for (const cap of match.captures) {
+          if (cap.name !== 'extends' && cap.name !== 'implements') continue
+          const supertype = cap.node.text.trim()
+          if (supertype.length > 0) {
+            extracted.push({ supertype, relation: cap.name, line: cap.node.startPosition.row + 1 })
+          }
+        }
+      }
+      inherits = extracted
+    }
+  } catch (e) { console.error(`[parse] inherit query failed for ${relPath}: ${e}`) }
+
+  return { symbols, imports, calls, inherits }
 }

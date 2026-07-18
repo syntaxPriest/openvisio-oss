@@ -188,18 +188,36 @@ export interface CompiledQueries {
   symbolQuery: Query
   importQuery: Query | null
   callQuery: Query | null
+  inheritQuery: Query | null
 }
 
 const queryCache = new Map<string, CompiledQueries>()
 
-export function getOrCompileQueries(id: GrammarId, config: { symbolQuery: string; importQuery: string | null; callQuery?: string }): CompiledQueries {
-  const key = `${id}::${config.symbolQuery}::${config.importQuery}::${config.callQuery ?? ''}`
+/** Compile an optional query, tolerating failures: a query that references a
+ *  node type this grammar version doesn't have compiles to `null` (logged once)
+ *  instead of throwing and disabling all extraction for the grammar. */
+function compileOptional(id: GrammarId, source: string | null | undefined): Query | null {
+  if (!source) return null
+  try {
+    return compileQuery(id, source)
+  } catch (e) {
+    console.error(`[parse] query compile failed for ${id} (skipped): ${e}`)
+    return null
+  }
+}
+
+export function getOrCompileQueries(
+  id: GrammarId,
+  config: { symbolQuery: string; importQuery: string | null; callQuery?: string; inheritQuery?: string },
+): CompiledQueries {
+  const key = `${id}::${config.symbolQuery}::${config.importQuery}::${config.callQuery ?? ''}::${config.inheritQuery ?? ''}`
   let cached = queryCache.get(key)
   if (!cached) {
     cached = {
       symbolQuery: compileQuery(id, config.symbolQuery),
-      importQuery: config.importQuery ? compileQuery(id, config.importQuery) : null,
-      callQuery: config.callQuery ? compileQuery(id, config.callQuery) : null,
+      importQuery: compileOptional(id, config.importQuery),
+      callQuery: compileOptional(id, config.callQuery),
+      inheritQuery: compileOptional(id, config.inheritQuery),
     }
     queryCache.set(key, cached)
   }

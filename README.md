@@ -138,9 +138,11 @@ file-crawling an agent does just to find where the relevant code lives.
 |------|--------------|
 | `resolve_context` | task-ranked skeleton + neighborhoods of the most relevant files (call first) |
 | `get_repo_skeleton` | the whole ranked repo map |
-| `find_symbol` | locate a function/class/type → signature + `path:line` |
+| `find_symbol` | locate a function/class/type by name, regex, or **natural-language query** (BM25) → signature + `path:line` |
+| `search_code` | full-text search (the grep replacement) → ranked, symbol-annotated, anchored hits |
+| `trace_calls` | walk the call graph — who calls a function / what it calls (the "grep for callers" replacement) |
 | `get_neighborhood` | local import subgraph around a file/symbol |
-| `get_dependents` | who imports this (impact analysis) |
+| `get_dependents` | who imports this (file-level impact analysis) |
 | `get_hotspots` | churn × centrality refactor/risk candidates |
 
 Every line carries a `path:line` anchor, so agents read only the slice they need.

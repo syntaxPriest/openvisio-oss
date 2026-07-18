@@ -18,10 +18,17 @@ import * as path from 'node:path'
 import {
   buildGraph,
   buildSkeleton,
+  computeCentrality,
   estimateTokens,
+  rankSymbols,
   resolveContext,
   scanRepo,
+  searchContent,
+  tokenize,
+  traceCalls,
+  type Centrality,
   type CodeGraph,
+  type CodeSymbol,
   type ScannedFile,
 } from '@openvisio/core'
 
@@ -99,6 +106,138 @@ function fmt(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${n}`
 }
 
+// ---------------------------------------------------------------------------
+// Targeted-operation baselines. resolve_context models "start a task"; these
+// model the three grep-shaped LOOKUPS the new tools replace — searching for a
+// string, tracing callers, and finding a symbol by concept. For each we count
+// the tokens a grep agent burns (read whole every file that matches the term)
+// vs the exact tokens the tool returns for the same question.
+// ---------------------------------------------------------------------------
+
+/** Files whose content contains `term` (case-insensitive), ranked by hit count
+ *  and capped like a real agent's read budget — the grep-then-read baseline. */
+function filesContainingTerm(
+  term: string,
+  graph: CodeGraph,
+  contentByPath: Map<string, string>,
+): number[] {
+  const needle = term.toLowerCase()
+  const scored: { id: number; hits: number }[] = []
+  for (const f of graph.files) {
+    const content = contentByPath.get(f.path)
+    if (content === undefined) continue
+    const hay = content.toLowerCase()
+    if (!hay.includes(needle)) continue
+    // Count occurrences cheaply (split is fine for an estimate).
+    scored.push({ id: f.id, hits: hay.split(needle).length - 1 })
+  }
+  scored.sort((a, b) => b.hits - a.hits || a.id - b.id)
+  return scored.slice(0, MAX_GREP_FILES).map((s) => s.id)
+}
+
+/** Symbol ids that are the TARGET of at least one call edge — i.e. have callers
+ *  worth tracing (so the trace-baseline isn't measured on dead leaves). */
+function symbolsWithCallers(graph: CodeGraph): Set<number> {
+  const out = new Set<number>()
+  for (const e of graph.edges) if (e.kind === 'calls') out.add(e.targetId)
+  return out
+}
+
+/** Deterministically pick probe symbols: most import-central first, exported and
+ *  specifically-named preferred, unique names. These stand in for the symbols an
+ *  agent actually looks up. */
+function pickProbes(graph: CodeGraph, centrality: Centrality, count: number): CodeSymbol[] {
+  const seen = new Set<string>()
+  return [...graph.symbols]
+    .filter((s) => s.name.length >= 5 && /^[A-Za-z_]/.test(s.name))
+    .sort((a, b) => {
+      const sa = centrality.scoreByFile.get(a.fileId) ?? 0
+      const sb = centrality.scoreByFile.get(b.fileId) ?? 0
+      if (sb !== sa) return sb - sa
+      if (a.exported !== b.exported) return a.exported ? -1 : 1
+      const pa = graph.filesById.get(a.fileId)?.path ?? ''
+      const pb = graph.filesById.get(b.fileId)?.path ?? ''
+      if (pa !== pb) return pa.localeCompare(pb)
+      return a.startLine - b.startLine
+    })
+    .filter((s) => (seen.has(s.name) ? false : (seen.add(s.name), true)))
+    .slice(0, count)
+}
+
+interface OpStat {
+  ov: number
+  base: number
+  n: number
+}
+
+/** Run the three grep-replacement operations over the probe set and total the
+ *  tokens each side spends. Everything is deterministic. */
+function measureOperations(
+  graph: CodeGraph,
+  centrality: Centrality,
+  contentByPath: Map<string, string>,
+): { search: OpStat; trace: OpStat; find: OpStat } {
+  const probes = pickProbes(graph, centrality, 12)
+  const callable = symbolsWithCallers(graph)
+  const search: OpStat = { ov: 0, base: 0, n: 0 }
+  const trace: OpStat = { ov: 0, base: 0, n: 0 }
+  const find: OpStat = { ov: 0, base: 0, n: 0 }
+
+  for (const sym of probes) {
+    // 1) search_code: grep a string → read matching files whole vs matched lines.
+    const searchBase = tokensOfFiles(filesContainingTerm(sym.name, graph, contentByPath), graph, contentByPath)
+    if (searchBase > 0) {
+      search.ov += estimateTokens(searchContent(graph, { query: sym.name, centrality }).text)
+      search.base += searchBase
+      search.n++
+    }
+
+    // 2) trace_calls: "who calls X" → grep the name + read every hit vs the tree.
+    if (callable.has(sym.id)) {
+      const traceBase = tokensOfFiles(filesContainingTerm(sym.name, graph, contentByPath), graph, contentByPath)
+      if (traceBase > 0) {
+        trace.ov += estimateTokens(
+          traceCalls(graph, { symbolName: sym.name, direction: 'callers', centrality }).text,
+        )
+        trace.base += traceBase
+        trace.n++
+      }
+    }
+
+    // 3) find_symbol (BM25): concept query (the tokenized name) → grep each term
+    //    and read files matching ≥2 terms, vs the ranked signature list.
+    const terms = [...new Set(tokenize(sym.name))]
+    if (terms.length >= 2) {
+      const matchIds = new Set<number>()
+      for (const f of graph.files) {
+        const content = contentByPath.get(f.path)
+        if (content === undefined) continue
+        const hay = (f.path + '\n' + content).toLowerCase()
+        let hit = 0
+        for (const t of terms) if (hay.includes(t)) hit++
+        if (hit >= 2) matchIds.add(f.id)
+      }
+      const findBase = tokensOfFiles([...matchIds].slice(0, MAX_GREP_FILES), graph, contentByPath)
+      if (findBase > 0) {
+        const hits = rankSymbols(graph, terms.join(' '), { centrality, limit: 8 })
+        // find_symbol returns signature + anchor per hit (the discovery surface).
+        const rendered = hits
+          .map((h) => `${h.symbol.signature}  @${h.file.path}:${h.symbol.startLine}`)
+          .join('\n')
+        find.ov += Math.min(estimateTokens(rendered), 800) // tool caps at ~800 tokens
+        find.base += findBase
+        find.n++
+      }
+    }
+  }
+  return { search, trace, find }
+}
+
+/** Percent token reduction for an operation stat (0 when no samples). */
+function reduction(s: OpStat): number {
+  return s.base > 0 ? (1 - s.ov / s.base) * 100 : 0
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const positional = argv.filter((a) => !a.startsWith('--'))
@@ -124,10 +263,18 @@ async function main(): Promise<void> {
     if (graph.fileIdByPath.has(sf.relPath)) contentByPath.set(sf.relPath, sf.content)
   }
 
+  const centrality = computeCentrality(graph)
+
   // Whole-repo "understand this codebase" priming comparison.
   const repoTokens = tokensOfFiles(graph.files.map((f) => f.id), graph, contentByPath)
   const skeleton = buildSkeleton(graph, { budgetTokens: 1500 })
   const skeletonTokens = estimateTokens(skeleton.text)
+
+  // Targeted grep-replacement operations (search_code / trace_calls / find_symbol).
+  const ops = measureOperations(graph, centrality, contentByPath)
+  const opsBase = ops.search.base + ops.trace.base + ops.find.base
+  const opsOv = ops.search.ov + ops.trace.ov + ops.find.ov
+  const opsReduction = opsBase > 0 ? (1 - opsOv / opsBase) * 100 : 0
 
   const rows: string[] = []
   let sumOv = 0
@@ -174,6 +321,20 @@ async function main(): Promise<void> {
     ...rows,
     `| **TOTAL** | **${fmt(sumOv)}** | **${fmt(sumBase)}** | **${totalRatio.toFixed(1)}×** | |`,
     '',
+    '## Targeted lookups (the grep-replacement tools)',
+    '',
+    `> Models the three grep-shaped operations the tools replace, over ${ops.search.n}`,
+    `> deterministically-sampled probe symbols (most import-central first). Baseline =`,
+    `> tokens of every file a grep agent reads whole to answer the same question;`,
+    `> OpenVisio = the exact tokens the tool returns.`,
+    '',
+    '| operation | replaces | OpenVisio | grep baseline | reduction | samples |',
+    '|---|---|---|---|---|---|',
+    `| \`search_code\` | grep a string, read hit files | ${fmt(ops.search.ov)} | ${fmt(ops.search.base)} | ${reduction(ops.search).toFixed(0)}% | ${ops.search.n} |`,
+    `| \`trace_calls\` | grep "who calls X", read hits | ${fmt(ops.trace.ov)} | ${fmt(ops.trace.base)} | ${reduction(ops.trace).toFixed(0)}% | ${ops.trace.n} |`,
+    `| \`find_symbol\` (BM25) | grep a concept, read hits | ${fmt(ops.find.ov)} | ${fmt(ops.find.base)} | ${reduction(ops.find).toFixed(0)}% | ${ops.find.n} |`,
+    `| **COMBINED** | | **${fmt(opsOv)}** | **${fmt(opsBase)}** | **${opsReduction.toFixed(0)}%** | |`,
+    '',
     '## Method & honesty notes',
     '',
     `- Baseline = Σ tokens of files a no-graph agent opens: keyword-grep hits`,
@@ -183,6 +344,10 @@ async function main(): Promise<void> {
     `  re-process context every agent-loop turn (Codex ~3–5×), none of which is`,
     `  counted here. It also ignores the per-turn tool-definition tax.`,
     `- OpenVisio cost = exact size of \`resolve_context\` output (one call).`,
+    `- **Targeted lookups**: probes are the ${12} most-central uniquely-named symbols. The`,
+    `  grep baseline reads whole every file whose text contains the term (capped at`,
+    `  ${MAX_GREP_FILES}); the tool cost is its actual returned text. Conservative — it counts`,
+    `  one grep+read pass, not the re-greps a real agent runs on ambiguous names.`,
     `- It does **not** model answer quality. Graph-first trades a few quality points`,
     `  for the token saving (see the research doc); the agent can always fall back`,
     `  to a real file read via the anchors OpenVisio returns.`,

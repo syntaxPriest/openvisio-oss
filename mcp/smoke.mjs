@@ -1,5 +1,5 @@
 // End-to-end smoke test for the OpenVisio MCP server. Spins up the built server
-// over stdio against a disposable repo and exercises every phase: the 7 tools,
+// over stdio against a disposable repo and exercises every phase: the 9 tools,
 // the spotlight SSE stream, incremental --watch, and determinism. Run with:
 //
 //   npm run smoke        (builds first)   — or   node mcp/smoke.mjs
@@ -35,7 +35,7 @@ fs.rmSync(root, { recursive: true, force: true })
 fs.mkdirSync(path.join(root, 'src'), { recursive: true })
 fs.writeFileSync(path.join(root, 'src/types.ts'), `export interface User { id: number }\nexport type Role = 'admin' | 'user'\n`)
 fs.writeFileSync(path.join(root, 'src/auth.ts'), `import { User } from './types'\nexport function login(u: User){ return u.id }\n`)
-fs.writeFileSync(path.join(root, 'src/api.ts'), `import { login } from './auth'\nimport { Role } from './types'\nexport function handler(){ return login }\n`)
+fs.writeFileSync(path.join(root, 'src/api.ts'), `import { login } from './auth'\nimport { Role } from './types'\nexport function handler(){ return login({ id: 1 }) }\n`)
 
 const transport = new StdioClientTransport({
   command: 'node',
@@ -50,12 +50,18 @@ const call = async (name, args = {}) => (await client.callTool({ name, arguments
 
 console.log('\n[tools] surface + output')
 const tools = (await client.listTools()).tools.map((t) => t.name)
-// 7 read-only tools + the reverse channel (get_user_request + submit_answer), present under --spotlight.
-ok(tools.length === 9, `lists 9 tools: ${tools.join(', ')}`)
+// 9 read-only tools + the reverse channel (get_user_request + submit_answer), present under --spotlight.
+ok(tools.length === 11, `lists 11 tools: ${tools.join(', ')}`)
 ok(tools.includes('get_user_request') && tools.includes('submit_answer'), 'reverse-channel tools registered under --spotlight')
 ok((await call('resolve_context', { task_description: 'add admin role check to login' })).includes('auth.ts'), 'resolve_context surfaces auth.ts')
 ok((await call('get_repo_skeleton', { budget_tokens: 400 })).includes('@src/'), 'get_repo_skeleton has path:line anchors')
 ok((await call('find_symbol', { name: 'login' })).includes('src/auth.ts:'), 'find_symbol(login) returns an anchor')
+ok((await call('search_code', { query: 'login' })).includes('@src/auth.ts:2'), 'search_code(login) returns an anchored content hit')
+ok((await call('search_code', { query: 'admin|user', regex: true, path_filter: '*.ts' })).includes('@src/types.ts:'), 'search_code regex + glob path_filter works')
+ok((await call('search_code', { query: 'nope_absent_xyz' })).includes('No matches'), 'search_code reports no matches cleanly')
+ok((await call('find_symbol', { query: 'handle user login' })).includes('src/auth.ts:'), 'find_symbol(query) BM25-ranks login by natural language')
+ok((await call('trace_calls', { symbol_name: 'login' })).includes('handler'), 'trace_calls(login) finds caller handler over call edges')
+ok((await call('trace_calls', { symbol_name: 'handler', direction: 'callees' })).includes('login'), 'trace_calls(handler, callees) shows it calls login')
 ok((await call('get_dependents', { target: 'types.ts' })).includes('is imported by'), 'get_dependents(types.ts) lists importers')
 ok((await call('get_neighborhood', { target: 'auth.ts' })).includes('CENTER'), 'get_neighborhood(auth.ts) has a CENTER')
 ok((await call('get_hotspots', {})).includes('centrality'), 'get_hotspots ranks by centrality')

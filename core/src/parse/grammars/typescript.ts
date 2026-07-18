@@ -13,6 +13,7 @@ const TS_SYMBOLS = `
 (enum_declaration name: (identifier) @name) @def.type
 (lexical_declaration (variable_declarator name: (identifier) @name)) @def.const
 (variable_declaration (variable_declarator name: (identifier) @name)) @def.const
+(method_definition name: (property_identifier) @name) @def.method
 `
 const TS_IMPORTS = `
 (import_statement source: (string) @source)
@@ -23,6 +24,16 @@ const TS_CALLS = `
 (call_expression function: (identifier) @callee)
 (call_expression function: (member_expression property: (property_identifier) @callee))
 (new_expression constructor: (identifier) @callee)
+`
+// Class/interface heritage → `extends`/`implements` supertype names. Captures the
+// bare type identifier (generics unwrap to their head, e.g. Foo<T> → Foo).
+const TS_INHERIT = `
+(extends_clause (identifier) @extends)
+(extends_clause (member_expression property: (property_identifier) @extends))
+(implements_clause (type_identifier) @implements)
+(implements_clause (generic_type (type_identifier) @implements))
+(extends_type_clause (type_identifier) @extends)
+(extends_type_clause (generic_type (type_identifier) @extends))
 `
 
 function exported(def: import('web-tree-sitter').Node): boolean {
@@ -40,6 +51,27 @@ function topLevel(def: import('web-tree-sitter').Node): boolean {
   if (p.type === 'program') return true
   if (p.type === 'export_statement' && p.parent?.type === 'program') return true
   return false
+}
+
+/** The enclosing class/interface declaration of a node, if any (walks out
+ *  through class_body). Used to keep methods only of kept classes and to mark a
+ *  method's public surface from its class. */
+function enclosingClass(def: import('web-tree-sitter').Node): import('web-tree-sitter').Node | null {
+  let n: import('web-tree-sitter').Node | null = def.parent
+  for (let i = 0; i < 4 && n; i++) {
+    if (n.type === 'class_declaration' || n.type === 'abstract_class_declaration' || n.type === 'class') return n
+    n = n.parent
+  }
+  return null
+}
+
+/** Keep a method only if its owning class is itself kept (top-level or exported)
+ *  — so we add the members that matter without flooding the graph with the
+ *  methods of throwaway local classes. */
+function keptMember(def: import('web-tree-sitter').Node): boolean {
+  const cls = enclosingClass(def)
+  if (!cls) return false
+  return topLevel(cls) || exported(cls)
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +138,18 @@ export const typescript: GrammarConfig = {
   symbolQuery: TS_SYMBOLS,
   importQuery: TS_IMPORTS,
   callQuery: TS_CALLS,
-  keep: (def) => topLevel(def) || exported(def),
-  exported: (def) => exported(def),
+  inheritQuery: TS_INHERIT,
+  keep: (def) =>
+    def.type === 'method_definition' ? keptMember(def) : topLevel(def) || exported(def),
+  // A method's public surface follows its class; other symbols follow their own
+  // export marker.
+  exported: (def) => {
+    if (def.type === 'method_definition') {
+      const cls = enclosingClass(def)
+      return cls ? exported(cls) : false
+    }
+    return exported(def)
+  },
   importSpecifier: (n) => {
     const s = n.text
     if (s.length >= 2) {

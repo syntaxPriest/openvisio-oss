@@ -178,6 +178,20 @@ command = "openvisio"
 args = ["mcp", ".", "--watch"]
 ```
 
+**opencode** — `~/.config/opencode/opencode.json` (or project-local `opencode.json`):
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "openvisio": {
+      "type": "local",
+      "command": ["openvisio", "mcp", ".", "--watch"],
+      "enabled": true
+    }
+  }
+}
+```
+
 ### Troubleshooting: "MCP server failed to connect" (nvm + GUI editors)
 
 If you installed Node with **nvm** and your MCP client is a **GUI app** (Cursor,

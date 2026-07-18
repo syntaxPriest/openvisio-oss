@@ -96,6 +96,7 @@ OpenVisio speaks the **Model Context Protocol** (the open standard from
 | **Codex** | OpenAI |
 | **Windsurf** | Codeium |
 | **GitHub Copilot** (Agent Mode / VS Code MCP) | GitHub / Microsoft |
+| **opencode** | SST |
 | **Cline** | open source |
 | **Continue** | Continue.dev |
 | **Zed** | Zed Industries |
@@ -105,6 +106,23 @@ OpenVisio speaks the **Model Context Protocol** (the open standard from
 > Trademarks belong to their respective owners. OpenVisio is an independent,
 > MIT-licensed tool and is not affiliated with or endorsed by these companies — it
 > simply implements the open Model Context Protocol they support.
+
+For clients that aren't auto-configured, add the `openvisio` server by hand. For
+example, [**opencode**](https://opencode.ai) reads `~/.config/opencode/opencode.json`
+(or a project-local `opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "openvisio": {
+      "type": "local",
+      "command": ["openvisio", "mcp", ".", "--watch"],
+      "enabled": true
+    }
+  }
+}
+```
 
 ### Why token cost matters whatever model you run
 
@@ -312,7 +330,7 @@ Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MCP server · Model Context Protocol · Anthropic Claude · Claude Code · Cursor
 (Anysphere) · OpenAI Codex · GPT · Google Gemini · GitHub Copilot · Microsoft
-VS Code · Windsurf · Codeium · Cline · Continue · Zed · JetBrains · Meta Llama ·
+VS Code · Windsurf · Codeium · Cline · Continue · Zed · JetBrains · opencode (SST) · Meta Llama ·
 Mistral · DeepSeek · reduce token usage · save LLM tokens · lower API cost ·
 token-efficient context · context engineering · code graph · code knowledge graph ·
 codebase visualization · 3D code map · dependency graph · call graph · import graph ·

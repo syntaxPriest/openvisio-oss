@@ -30,6 +30,7 @@ import {
   type SymbolHit,
 } from '@openvisio/core'
 import type { UserRequest } from './spotlight.js'
+import { describeImage } from './translate_image.js'
 
 /**
  * Optional capabilities wired in only when the server runs with `--spotlight`.
@@ -63,7 +64,7 @@ export interface ToolDef {
   name: string
   description: string
   inputShape: z.ZodRawShape
-  handler: (args: Record<string, unknown>) => ToolResult
+  handler: (args: Record<string, unknown>) => ToolResult | Promise<ToolResult>
 }
 
 type GetState = () => GraphState
@@ -471,6 +472,31 @@ function submitAnswerTool(postAnswer: (requestId: string, answer: string) => voi
   }
 }
 
+// ---------------------------------------------------------------------------
+// translate_image — classical CV description to replace screenshots in prompts.
+// ---------------------------------------------------------------------------
+function translateImageTool(): ToolDef {
+  return {
+    name: 'translate_image',
+    description:
+      'Analyze a screenshot/image locally using classical computer vision and return a structured text description (colors, luminance, sharpness, edge density, text regions, layout). Use this when the user provides an image so you can work from the description instead of sending image bytes to the LLM — saves ~500-1500 tokens per image.',
+    inputShape: {
+      image_path: z.string().describe('Absolute or relative path to the image file (PNG, JPEG, WebP, GIF, etc.).'),
+    },
+    handler: async (args) => {
+      const imagePath = args.image_path as string
+      if (!imagePath) return { text: 'Provide an `image_path`.', touchedFiles: [] }
+      try {
+        const { description } = await describeImage(imagePath)
+        return { text: description, touchedFiles: [] }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { text: `translate_image error: ${msg}`, touchedFiles: [] }
+      }
+    },
+  }
+}
+
 /**
  * Build the full tool set bound to a live state accessor. Order reads task-first
  * (resolve_context, skeleton) then drill-down tools. Keep this list tiny — every
@@ -488,6 +514,7 @@ export function buildTools(getState: GetState, deps?: ToolDeps): ToolDef[] {
     dependentsTool(getState),
     hotspotsTool(getState),
     languagesTool(getState),
+    translateImageTool(),
   ]
   if (deps?.takeRequest) tools.push(getUserRequestTool(getState, deps.takeRequest))
   if (deps?.postAnswer) tools.push(submitAnswerTool(deps.postAnswer))

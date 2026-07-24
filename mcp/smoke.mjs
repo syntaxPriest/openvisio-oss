@@ -67,6 +67,13 @@ ok((await call('get_neighborhood', { target: 'auth.ts' })).includes('CENTER'), '
 ok((await call('get_hotspots', {})).includes('centrality'), 'get_hotspots ranks by centrality')
 ok((await call('get_languages', {})).includes('loc'), 'get_languages lists languages with loc')
 
+console.log('\n[translate_image]')
+const sharp = await import('sharp')
+const imgPath = path.join(root, 'test.png')
+await sharp.default({ create: { width: 4, height: 4, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toFile(imgPath)
+const desc = await call('translate_image', { image_path: imgPath })
+ok(desc.includes('Dimensions:') && desc.includes('Format:') && desc.includes('Dominant colors:'), 'translate_image returns structured description')
+
 console.log('\n[spotlight] SSE stream')
 const health = await new Promise((res, rej) =>
   http.get({ host: '127.0.0.1', port: PORT, path: '/health' }, (r) => {

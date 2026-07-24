@@ -19,7 +19,7 @@ const common = {
   format: 'esm',
   target: 'node18',
   sourcemap: false,
-  external: ['@modelcontextprotocol/sdk', 'zod', 'web-tree-sitter', 'tree-sitter-wasms', 'lmdb', 'openvisio-viewer'],
+  external: ['@modelcontextprotocol/sdk', 'zod', 'web-tree-sitter', 'tree-sitter-wasms', 'lmdb', 'openvisio-viewer', 'sharp'],
   logLevel: 'info',
 }
 

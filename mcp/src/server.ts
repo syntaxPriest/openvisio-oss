@@ -159,7 +159,7 @@ export async function serveMcp(opts: ServeOptions): Promise<void> {
         await ready
         const t0 = Date.now()
         try {
-          const result = tool.handler(args)
+          const result = await tool.handler(args)
           const latencyMs = Date.now() - t0
           telemetry.record(tool.name, latencyMs, result.text.length)
           receipt.record(result.text, result.touchedFiles)

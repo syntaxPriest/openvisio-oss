@@ -886,6 +886,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "lmdb": "^3.2.6",
     "openvisio-viewer": "^0.2.0",
+    "sharp": "^0.33.5",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "~0.25.10",
     "zod": "^4.4.3"

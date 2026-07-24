@@ -64,7 +64,7 @@ export const FileSchema = z.object({
 })
 export type File = z.infer<typeof FileSchema>
 
-export const SymbolKindSchema = z.enum(['function', 'class', 'const', 'type', 'interface'])
+export const SymbolKindSchema = z.enum(['function', 'method', 'class', 'const', 'type', 'interface'])
 export type SymbolKind = z.infer<typeof SymbolKindSchema>
 
 export const SymbolSchema = z.object({

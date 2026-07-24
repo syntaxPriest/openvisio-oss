@@ -24,11 +24,12 @@ export interface AtlasViewProps {
   embed?: boolean
 }
 
-const NODE_TYPES: AtlasNodeType[] = ['file', 'function', 'class', 'interface', 'type', 'const']
-const LINK_KINDS: AtlasLinkKind[] = ['imports', 'defines', 'calls']
+const NODE_TYPES: AtlasNodeType[] = ['file', 'function', 'method', 'class', 'interface', 'type', 'const']
+const LINK_KINDS: AtlasLinkKind[] = ['imports', 'defines', 'calls', 'extends', 'implements']
 const NODE_LABEL: Record<AtlasNodeType, string> = {
   file: 'File',
   function: 'Function',
+  method: 'Method',
   class: 'Class',
   interface: 'Interface',
   type: 'Type',
@@ -47,7 +48,7 @@ const NODE_VERT = `
   void main() {
     vColor = aColor;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = clamp(size * uScale / max(1.0, -mv.z), 1.5, 64.0);
+    gl_PointSize = clamp(size * uScale / max(1.0, -mv.z), 1.5, 128.0);
     gl_Position = projectionMatrix * mv;
   }
 `
@@ -273,7 +274,16 @@ function AtlasScene({ atlas, bounds, hiddenTypes, hiddenLinks, focusedFileId, on
     const colors = new Float32Array(kept.length * 6)
     for (let i = 0; i < kept.length; i++) {
       const { s, t, kind } = kept[i]!
-      const intensity = kind === 'imports' ? 0.5 : kind === 'calls' ? 0.6 : 0.18
+      const intensity =
+        kind === 'imports'
+          ? 0.5
+          : kind === 'calls'
+            ? 0.6
+            : kind === 'extends'
+              ? 0.75
+              : kind === 'implements'
+                ? 0.7
+                : 0.18
       const [r, g, b] = toColor(ATLAS_LINK_COLOR[kind], intensity)
       const o = i * 6
       positions[o] = s.x

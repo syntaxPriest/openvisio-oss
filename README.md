@@ -96,6 +96,7 @@ OpenVisio speaks the **Model Context Protocol** (the open standard from
 | **Codex** | OpenAI |
 | **Windsurf** | Codeium |
 | **GitHub Copilot** (Agent Mode / VS Code MCP) | GitHub / Microsoft |
+| **opencode** | SST |
 | **Cline** | open source |
 | **Continue** | Continue.dev |
 | **Zed** | Zed Industries |
@@ -105,6 +106,23 @@ OpenVisio speaks the **Model Context Protocol** (the open standard from
 > Trademarks belong to their respective owners. OpenVisio is an independent,
 > MIT-licensed tool and is not affiliated with or endorsed by these companies — it
 > simply implements the open Model Context Protocol they support.
+
+For clients that aren't auto-configured, add the `openvisio` server by hand. For
+example, [**opencode**](https://opencode.ai) reads `~/.config/opencode/opencode.json`
+(or a project-local `opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "openvisio": {
+      "type": "local",
+      "command": ["openvisio", "mcp", ".", "--watch"],
+      "enabled": true
+    }
+  }
+}
+```
 
 ### Why token cost matters whatever model you run
 
@@ -120,9 +138,11 @@ file-crawling an agent does just to find where the relevant code lives.
 |------|--------------|
 | `resolve_context` | task-ranked skeleton + neighborhoods of the most relevant files (call first) |
 | `get_repo_skeleton` | the whole ranked repo map |
-| `find_symbol` | locate a function/class/type → signature + `path:line` |
+| `find_symbol` | locate a function/class/type by name, regex, or **natural-language query** (BM25) → signature + `path:line` |
+| `search_code` | full-text search (the grep replacement) → ranked, symbol-annotated, anchored hits |
+| `trace_calls` | walk the call graph — who calls a function / what it calls (the "grep for callers" replacement) |
 | `get_neighborhood` | local import subgraph around a file/symbol |
-| `get_dependents` | who imports this (impact analysis) |
+| `get_dependents` | who imports this (file-level impact analysis) |
 | `get_hotspots` | churn × centrality refactor/risk candidates |
 
 Every line carries a `path:line` anchor, so agents read only the slice they need.
@@ -312,7 +332,7 @@ Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MCP server · Model Context Protocol · Anthropic Claude · Claude Code · Cursor
 (Anysphere) · OpenAI Codex · GPT · Google Gemini · GitHub Copilot · Microsoft
-VS Code · Windsurf · Codeium · Cline · Continue · Zed · JetBrains · Meta Llama ·
+VS Code · Windsurf · Codeium · Cline · Continue · Zed · JetBrains · opencode (SST) · Meta Llama ·
 Mistral · DeepSeek · reduce token usage · save LLM tokens · lower API cost ·
 token-efficient context · context engineering · code graph · code knowledge graph ·
 codebase visualization · 3D code map · dependency graph · call graph · import graph ·

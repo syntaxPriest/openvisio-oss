@@ -12,6 +12,9 @@ import { scanRepo, type ScanOptions, type ScannedFile } from './scan.js'
 import { parseJsonc } from './jsonc.js'
 import { grammarForFile, loadGrammars } from './parse/treesitter.js'
 import { GRAMMARS, type TsAliases } from './parse/grammars/index.js'
+import { computeLineStarts } from './position.js'
+import { assignNodeIds, rootIdFor } from './nodeid.js'
+import { assignRevisions, newRevisionState, type RevisionState } from './revision.js'
 import type { Store } from './store.js'
 import type {
   CodeEdge,
@@ -128,6 +131,9 @@ export interface AssembleContext {
   idByPath?: Map<string, number>
   aliases?: TsAliases
   parseTimeoutMs?: number
+  /** Baseline revision stamped on every node (default 1). The Indexer overrides
+   *  per-node via assignRevisions; standalone builds stay uniform at this value. */
+  revision?: number
 }
 
 export async function assembleGraph(
@@ -136,6 +142,7 @@ export async function assembleGraph(
   ctx: AssembleContext = {},
 ): Promise<CodeGraph> {
   const cache = ctx.cache
+  const buildRevision = ctx.revision ?? 1
   const idByPath = ctx.idByPath ?? new Map<string, number>()
   let nextFileId = 0
   for (const id of idByPath.values()) nextFileId = Math.max(nextFileId, id + 1)
@@ -155,6 +162,7 @@ export async function assembleGraph(
   const filesById = new Map<number, CodeFile>()
   const rawImportsByFile = new Map<number, RawImport[]>()
   const rawCallsByFile = new Map<number, ParseResult['calls']>()
+  const rawInheritsByFile = new Map<number, ParseResult['inherits']>()
 
   let nextSymbolId = 0
   console.error(`[build] phase 1: assigning IDs to ${scanned.length} files`)
@@ -162,11 +170,16 @@ export async function assembleGraph(
     const fileId = allocId(sf.relPath)
     files.push({
       id: fileId,
+      nodeId: '', // assigned by assignNodeIds once all nodes exist
       path: sf.relPath,
       language: sf.language,
       loc: sf.loc,
       sha: sf.sha,
       lastModified: sf.lastModified,
+      // UTF-16 line index for offset->Position conversion (symbol ranges). Cheap
+      // to recompute; held in memory only, so it never touches the parse cache.
+      lineStarts: computeLineStarts(sf.content),
+      revision: buildRevision, // per-node revision refined by assignRevisions
     })
     filesById.set(fileId, files[files.length - 1]!)
     fileIdByPath.set(sf.relPath, fileId)
@@ -202,7 +215,7 @@ export async function assembleGraph(
       parsed = await parseFile(sf.relPath, sf.content, ctx.parseTimeoutMs)
     } catch (err) {
       console.error(`[build] parse error for ${sf.relPath}: ${err}`)
-      parsed = { symbols: [], imports: [], calls: [] }
+      parsed = { symbols: [], imports: [], calls: [], inherits: [] }
     }
     if (cache && 'get' in cache && 'set' in cache) {
       const store = cache as Store
@@ -230,13 +243,14 @@ export async function assembleGraph(
       const fileId = fileIdByPath.get(sf.relPath)!
       const fileSymbols: CodeSymbol[] = []
       for (const s of parsed.symbols) {
-        const sym: CodeSymbol = { id: nextSymbolId++, fileId, ...s }
+        const sym: CodeSymbol = { id: nextSymbolId++, nodeId: '', revision: buildRevision, fileId, ...s }
         symbols.push(sym)
         fileSymbols.push(sym)
       }
       symbolsByFile.set(fileId, fileSymbols)
       rawImportsByFile.set(fileId, parsed.imports)
       rawCallsByFile.set(fileId, parsed.calls ?? [])
+      rawInheritsByFile.set(fileId, parsed.inherits ?? [])
       if (grammarForFile(sf.relPath) && parsed.symbols.length === 0 && parsed.imports.length === 0) {
         emptyCount++
       }
@@ -244,6 +258,31 @@ export async function assembleGraph(
     if (emptyCount > 0) console.error(`[build] batch ${batchNum} done (${emptyCount} empty — timeout/crash)`)
   }
   console.error(`[build] phase 2 done: ${symbols.length} symbols extracted`)
+
+  // Language-agnostic method promotion: a `function` whose smallest strict
+  // container (by UTF-16 fullRange) is a `class` is really a method. This gives
+  // Python/Ruby/etc. the Function/Method split for free — grammars that already
+  // emit `method` (TS/JS/Java) are untouched (they aren't `function`), and a
+  // function nested in another function stays a function.
+  let promoted = 0
+  for (const fileSymbols of symbolsByFile.values()) {
+    for (const s of fileSymbols) {
+      if (s.kind !== 'function') continue
+      let best: CodeSymbol | null = null
+      for (const c of fileSymbols) {
+        if (c === s) continue
+        const enclosesInclusive = c.fullRange[0] <= s.fullRange[0] && s.fullRange[1] <= c.fullRange[1]
+        const strictlyLarger = c.fullRange[0] < s.fullRange[0] || s.fullRange[1] < c.fullRange[1]
+        if (!enclosesInclusive || !strictlyLarger) continue
+        if (!best || c.fullRange[1] - c.fullRange[0] < best.fullRange[1] - best.fullRange[0]) best = c
+      }
+      if (best && best.kind === 'class') {
+        s.kind = 'method'
+        promoted++
+      }
+    }
+  }
+  if (promoted > 0) console.error(`[build] promoted ${promoted} nested function(s) to methods`)
 
   console.error(`[build] resolving imports across ${files.length} files...`)
   const bySet = new Set(fileIdByPath.keys())
@@ -300,6 +339,8 @@ export async function assembleGraph(
   })
   const edges: CodeEdge[] = edgeEntries.map((e, i) => ({
     id: i,
+    nodeId: '', // assigned by assignNodeIds once endpoint nodeIds exist
+    revision: buildRevision,
     sourceId: e.sourceId,
     targetId: e.targetId,
     kind: 'import',
@@ -371,9 +412,41 @@ export async function assembleGraph(
     .sort((a, b) => a.sourceId - b.sourceId || a.targetId - b.targetId)
   let nextEdgeId = edges.length
   for (const c of callEntries) {
-    edges.push({ id: nextEdgeId++, sourceId: c.sourceId, targetId: c.targetId, kind: 'calls', weight: c.weight })
+    edges.push({ id: nextEdgeId++, nodeId: '', revision: buildRevision, sourceId: c.sourceId, targetId: c.targetId, kind: 'calls', weight: c.weight })
   }
   console.error(`[build] call edges done: ${callEntries.length} call edges, ${edges.length} total edges`)
+
+  // ---- Inheritance edges (class → superclass / interface) -------------------
+  // Same resolution as calls: the enclosing symbol at the heritage line is the
+  // subtype; the supertype name resolves to a symbol in this file or an import.
+  console.error(`[build] building inheritance edges...`)
+  const inheritWeights = new Map<string, { weight: number; relation: 'extends' | 'implements' }>()
+  for (const file of files) {
+    const inherits = rawInheritsByFile.get(file.id) ?? []
+    if (inherits.length === 0) continue
+    const fileSymbols = symbolsByFile.get(file.id) ?? []
+    for (const inh of inherits) {
+      const subtype = enclosing(fileSymbols, inh.line)
+      if (!subtype) continue
+      const supertype = resolveCallee(inh.supertype, file.id)
+      if (!supertype || supertype.id === subtype.id) continue
+      const key = `${subtype.id}->${supertype.id}:${inh.relation}`
+      const prev = inheritWeights.get(key)
+      if (prev) prev.weight += 1
+      else inheritWeights.set(key, { weight: 1, relation: inh.relation })
+    }
+  }
+  const inheritEntries = [...inheritWeights.entries()]
+    .map(([key, v]) => {
+      const [pair] = key.split(':') as [string]
+      const [sourceId, targetId] = pair.split('->').map(Number) as [number, number]
+      return { sourceId, targetId, weight: v.weight, relation: v.relation }
+    })
+    .sort((a, b) => a.sourceId - b.sourceId || a.targetId - b.targetId || a.relation.localeCompare(b.relation))
+  for (const c of inheritEntries) {
+    edges.push({ id: nextEdgeId++, nodeId: '', revision: buildRevision, sourceId: c.sourceId, targetId: c.targetId, kind: c.relation, weight: c.weight })
+  }
+  console.error(`[build] inheritance edges done: ${inheritEntries.length} edges, ${edges.length} total edges`)
 
   // Build adjacency index for O(1) import-edge neighbor lookups.
   const adjacency = new Map<number, { in: CodeEdge[]; out: CodeEdge[] }>()
@@ -384,8 +457,13 @@ export async function assembleGraph(
     adjacency.get(e.targetId)!.in.push(e)
   }
 
+  // Assign stable, root-qualified string ids to every node now that ranges and
+  // numeric ids exist. The rootId is path-derived (stable across restarts).
+  assignNodeIds(rootIdFor(absRoot), files, edges, symbolsByFile)
+
   console.error(`[build] done: ${files.length} files, ${symbols.length} symbols, ${edges.length} edges`)
   return {
+    revision: buildRevision,
     rootPath: absRoot,
     name: path.basename(absRoot),
     files,
@@ -402,6 +480,9 @@ export interface IndexChanges {
   added: string[]
   removed: string[]
   changed: string[]
+  /** nodeIds whose revision advanced to the new graphRevision this reindex — the
+   *  patch set for an incremental-update feed. Empty on a no-op reindex. */
+  changedNodeIds: string[]
 }
 
 // Persistent-cache schema version. The LMDB cache stores parse results (keyed by
@@ -411,8 +492,11 @@ export interface IndexChanges {
 // would be served verbatim, silently dropping imports/edges or aliasing symbols
 // to the wrong file. BUMP THIS whenever parse output or id allocation changes;
 // the Indexer wipes a cache whose stored version doesn't match.
-export const CACHE_VERSION = 2
+// v3: symbols gained UTF-16 nameRange/fullRange — older cached parse results
+//     predate those fields and must be reparsed.
+export const CACHE_VERSION = 3
 const CACHE_VERSION_KEY = 'meta:cacheVersion'
+const GRAPH_REVISION_KEY = 'meta:graphRevision'
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false
@@ -439,6 +523,10 @@ export class Indexer {
   readonly absRoot: string
   private readonly dbPath?: string
   private store?: Store
+  /** Monotonic build counter; loaded from store on first build, bumped per reindex. */
+  private graphRevision = 0
+  /** Per-node change memory across reindexes (in-memory; rebuilt each session). */
+  private readonly revState: RevisionState = newRevisionState()
 
   constructor(
     private readonly rootPath: string,
@@ -454,6 +542,9 @@ export class Indexer {
       const { LmdbStore } = await import('./stores/lmdb.js')
       this.store = new LmdbStore(this.dbPath)
       this.ensureCacheVersion(this.store)
+      // Resume the global revision counter so it stays monotonic across restarts.
+      const rev = this.store.get(GRAPH_REVISION_KEY)
+      if (rev && rev.length === 4) this.graphRevision = decodeU32(rev)
     }
     return (await this.run()).graph
   }
@@ -515,7 +606,7 @@ export class Indexer {
       if (collision) this.idByPath.clear()
     }
 
-    const changes: IndexChanges = { added: [], removed: [], changed: [] }
+    const changes: IndexChanges = { added: [], removed: [], changed: [], changedNodeIds: [] }
     const nextSha = new Map<string, string>()
     for (const sf of scanned) {
       nextSha.set(sf.relPath, sf.sha)
@@ -540,7 +631,12 @@ export class Indexer {
       parseTimeoutMs: this.opts.parseTimeoutMs,
     })
 
-    // Persist file IDs + SHA-512 change tracker to store.
+    // Bump the global revision once per reindex, then stamp per-node revisions and
+    // collect the changed set (the patch list for graph/updated).
+    this.graphRevision += 1
+    changes.changedNodeIds = assignRevisions(graph, this.revState, this.graphRevision)
+
+    // Persist file IDs + SHA-512 change tracker + revision counter to store.
     if (this.store) {
       for (const sf of scanned) {
         this.store.set(`id:${sf.relPath}`, encodeU32(graph.fileIdByPath.get(sf.relPath) ?? 0))
@@ -548,6 +644,7 @@ export class Indexer {
       for (const p of changes.removed) {
         this.store.delete(`id:${p}`)
       }
+      this.store.set(GRAPH_REVISION_KEY, encodeU32(this.graphRevision))
       this.store.sync()
     }
 

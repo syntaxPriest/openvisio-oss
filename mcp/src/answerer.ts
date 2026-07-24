@@ -17,10 +17,13 @@ const ANSWER_TIMEOUT_MS = Number(process.env.OPENVISIO_AGENT_TIMEOUT_MS) || 180_
 const READONLY_TOOLS = [
   'mcp__openvisio__resolve_context',
   'mcp__openvisio__find_symbol',
+  'mcp__openvisio__search_code',
+  'mcp__openvisio__trace_calls',
   'mcp__openvisio__get_neighborhood',
   'mcp__openvisio__get_dependents',
   'mcp__openvisio__get_repo_skeleton',
   'mcp__openvisio__get_hotspots',
+
   'Read',
   'Grep',
   'Glob',

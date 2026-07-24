@@ -68,3 +68,15 @@ export {
   type FindSymbolOptions,
   type DependencyHit,
 } from './query.js'
+export { searchContent, type SearchContentOptions } from './search.js'
+export {
+  traceCalls,
+  type TraceCallsOptions,
+  type TraceDirection,
+} from './trace.js'
+export {
+  rankSymbols,
+  tokenize,
+  type RankedSymbolHit,
+  type Bm25Options,
+} from './bm25.js'

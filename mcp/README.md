@@ -104,9 +104,11 @@ agent reads only the slice it needs.
 |------|--------------|
 | `resolve_context` | task description → task-ranked skeleton + the neighborhoods of the most relevant files. **Call this first.** |
 | `get_repo_skeleton` | the whole ranked repo map: most import-central files + their public symbols |
-| `find_symbol` | locate a function/class/type by name or pattern → signature + anchor |
+| `find_symbol` | locate a function/class/type by name, regex, or **natural-language query** (BM25 — "update cloud client" → `updateCloudClient`) → signature + anchor |
+| `search_code` | full-text search over the indexed repo — **the grep/ripgrep replacement**. Any literal, regex, TODO, or error string → ranked, symbol-annotated, anchored hits |
+| `trace_calls` | walk the **call graph** — who calls a function (impact) or what it calls, multi-hop, anchored tree. Replaces grepping for call sites |
 | `get_neighborhood` | local import subgraph around a file/symbol (dependents + dependencies) |
-| `get_dependents` | who imports this — directed impact analysis |
+| `get_dependents` | who imports this — directed file-level impact analysis |
 | `get_hotspots` | load-bearing / risky files: high import centrality (+ git churn) |
 
 The tool surface is intentionally tiny — schemas load into the agent's context
@@ -176,6 +178,20 @@ claude mcp add openvisio -- openvisio mcp . --watch
 [mcp_servers.openvisio]
 command = "openvisio"
 args = ["mcp", ".", "--watch"]
+```
+
+**opencode** — `~/.config/opencode/opencode.json` (or project-local `opencode.json`):
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "openvisio": {
+      "type": "local",
+      "command": ["openvisio", "mcp", ".", "--watch"],
+      "enabled": true
+    }
+  }
+}
 ```
 
 ### Troubleshooting: "MCP server failed to connect" (nvm + GUI editors)
